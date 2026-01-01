@@ -57,9 +57,9 @@ body {
 
 .app-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
   flex-wrap: nowrap;
   padding: 10px 16px;
   background: #f1f1f1;
@@ -71,20 +71,6 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.brand-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  color: #ffffff;
-  background: linear-gradient(135deg, var(--accent), var(--accent-warm));
-  box-shadow: 0 10px 20px -16px rgba(0, 0, 0, 0.5);
 }
 
 .brand-text h1 {
@@ -100,9 +86,10 @@ body {
   align-items: center;
   gap: 12px;
   flex-wrap: nowrap;
-  margin-left: auto;
+  margin-left: 8px;
+  width: 100%;
   overflow-x: auto;
-  max-width: 60%;
+  max-width: 100%;
   padding-bottom: 2px;
 }
 
@@ -174,6 +161,7 @@ body {
   border-radius: 999px;
   box-shadow: none;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .toggle-switch {
