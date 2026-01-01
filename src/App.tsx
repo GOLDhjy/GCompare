@@ -11,6 +11,9 @@ import "./App.css";
 
 const appStart = typeof performance !== "undefined" ? performance.now() : Date.now();
 const logFilePath = "startup.log";
+const editorFontSize = 13;
+const editorFontFamily =
+  "\"SF Mono\", Menlo, \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace";
 const appendStartupLog = async (message: string) => {
   const timestamp = new Date().toISOString();
   const line = `[${timestamp}] ${message}`;
@@ -373,12 +376,16 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    const refreshFontMetrics = async () => {
-      if (typeof document === "undefined" || !("fonts" in document)) {
+    let pending = false;
+    const remeasure = async () => {
+      if (pending) {
         return;
       }
+      pending = true;
       try {
-        await document.fonts.ready;
+        if (typeof document !== "undefined" && "fonts" in document) {
+          await document.fonts.ready;
+        }
         if (cancelled) {
           return;
         }
@@ -390,10 +397,29 @@ function App() {
         diffEditorRef.current?.layout();
       } catch (error) {
         console.warn("Failed to remeasure Monaco fonts.", error);
+      } finally {
+        pending = false;
       }
     };
 
-    void refreshFontMetrics();
+    void remeasure();
+    if (typeof window !== "undefined") {
+      const handleResize = () => {
+        void remeasure();
+      };
+      const handleVisibility = () => {
+        if (document.visibilityState === "visible") {
+          void remeasure();
+        }
+      };
+      window.addEventListener("resize", handleResize);
+      document.addEventListener("visibilitychange", handleVisibility);
+      return () => {
+        cancelled = true;
+        window.removeEventListener("resize", handleResize);
+        document.removeEventListener("visibilitychange", handleVisibility);
+      };
+    }
     return () => {
       cancelled = true;
     };
@@ -580,8 +606,8 @@ function App() {
               minimap: { enabled: false },
               renderOverviewRuler: false,
               lineNumbers: "on",
-              fontFamily: "\"IBM Plex Mono\", \"SF Mono\", Consolas, monospace",
-              fontSize: 13,
+              fontFamily: editorFontFamily,
+              fontSize: editorFontSize,
               wordWrap: "on",
             }}
           />
