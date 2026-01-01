@@ -13,7 +13,7 @@
     "windows": [
       {
         "title": "GCompare",
-        "hiddenTitle": true,
+        "hiddenTitle": false,
         "width": 800,
         "height": 600
       }

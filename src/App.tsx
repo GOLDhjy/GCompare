@@ -310,46 +310,39 @@ function App() {
     <main className="app">
       <div className="app-shell">
         <header className="app-header">
-          <div className="brand">
-            <div className="brand-text">
-              <h1>GCompare</h1>
-            </div>
+          <div className="actions">
+            <button
+              className="action-btn"
+              type="button"
+              onClick={() => handleOpenFile("original")}
+            >
+              <span className="action-label-full">Open Left File</span>
+              <span className="action-label-short">Left File</span>
+            </button>
+            <button
+              className="action-btn"
+              type="button"
+              onClick={() => handleOpenFile("modified")}
+            >
+              <span className="action-label-full">Open Right File</span>
+              <span className="action-label-short">Right File</span>
+            </button>
           </div>
-          <div className="controls">
-            <div className="actions">
-              <button
-                className="action-btn"
-                type="button"
-                onClick={() => handleOpenFile("original")}
-              >
-                <span className="action-label-full">Open Left File</span>
-                <span className="action-label-short">Left File</span>
-              </button>
-              <button
-                className="action-btn"
-                type="button"
-                onClick={() => handleOpenFile("modified")}
-              >
-                <span className="action-label-full">Open Right File</span>
-                <span className="action-label-short">Right File</span>
-              </button>
-            </div>
-            <div className="toggle">
-              <button
-                className="toggle-switch"
-                onClick={() => setSideBySide((prev) => !prev)}
-                type="button"
-                aria-pressed={!sideBySide}
-              >
-                <span className="toggle-text">
-                  Inline
-                </span>
-                <span className="toggle-state">{sideBySide ? "Off" : "On"}</span>
-                <span className="toggle-track" aria-hidden="true">
-                  <span className="toggle-knob" />
-                </span>
-              </button>
-            </div>
+          <div className="toggle">
+            <button
+              className="toggle-switch"
+              onClick={() => setSideBySide((prev) => !prev)}
+              type="button"
+              aria-pressed={!sideBySide}
+            >
+              <span className="toggle-text">
+                Inline
+              </span>
+              <span className="toggle-state">{sideBySide ? "Off" : "On"}</span>
+              <span className="toggle-track" aria-hidden="true">
+                <span className="toggle-knob" />
+              </span>
+            </button>
           </div>
         </header>
         <div className="status-bar" role="status" aria-live="polite">

@@ -67,37 +67,15 @@ body {
   order: 1;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.brand-text h1 {
-  margin: 2px 0 4px;
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-  font-size: 18px;
-  letter-spacing: 0.01em;
-}
-
-
-.controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: nowrap;
-  margin-left: 8px;
-  width: 100%;
-  overflow-x: auto;
-  max-width: 100%;
-  padding-bottom: 2px;
-}
-
 .actions {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   flex-wrap: nowrap;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 
 .action-btn {
