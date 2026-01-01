@@ -1,9 +1,13 @@
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::sync::Mutex;
+use std::time::Instant;
 
 use tauri::{
     menu::{Menu, MenuItem, Submenu, HELP_SUBMENU_ID},
     Emitter, Manager,
 };
+use tauri_plugin_log::{log, Builder as LogBuilder, RotationStrategy};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -36,9 +40,24 @@ fn collect_startup_paths() -> Vec<String> {
         .collect()
 }
 
+fn append_boot_log(message: &str) {
+    let path = std::env::temp_dir().join("gcompare-boot.log");
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(file, "{}", message);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let start = Instant::now();
+    append_boot_log("boot start");
+
+    let log_plugin = LogBuilder::new()
+        .rotation_strategy(RotationStrategy::KeepAll)
+        .build();
+
     let app = tauri::Builder::default()
+        .plugin(log_plugin)
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -79,24 +98,46 @@ pub fn run() {
             }
         })
         .manage(PendingOpenPaths::default())
-        .setup(|app| {
+        .setup(move |app| {
+            log::info!("setup start");
+            append_boot_log(&format!(
+                "setup start at {}ms",
+                start.elapsed().as_millis()
+            ));
             let startup_paths = collect_startup_paths();
             if !startup_paths.is_empty() {
                 let state = app.state::<PendingOpenPaths>();
                 let mut pending = state.0.lock().expect("pending open paths lock");
                 pending.extend(startup_paths);
             }
+            log::info!("setup end");
+            append_boot_log(&format!(
+                "setup end at {}ms",
+                start.elapsed().as_millis()
+            ));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![greet, consume_open_paths])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
 
-    app.run(|app_handle, event| {
+    append_boot_log(&format!(
+        "builder build done at {}ms",
+        start.elapsed().as_millis()
+    ));
+
+    app.run(move |app_handle, event| {
+        if let tauri::RunEvent::Ready = &event {
+            append_boot_log(&format!(
+                "run ready at {}ms",
+                start.elapsed().as_millis()
+            ));
+        }
+
         #[cfg(any(target_os = "macos", target_os = "ios"))]
-        if let tauri::RunEvent::Opened { urls } = event {
+        if let tauri::RunEvent::Opened { urls } = &event {
             let paths: Vec<String> = urls
-                .into_iter()
+                .iter()
                 .filter_map(|url| url.to_file_path().ok())
                 .filter(|path| path.is_file())
                 .map(|path| path.to_string_lossy().to_string())

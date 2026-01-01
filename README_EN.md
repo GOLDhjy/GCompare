@@ -42,9 +42,19 @@ npm run tauri dev
 ```
 
 ## Roadmap
-- Git history diff
-- Large file performance hints
-- Release automation (GitHub Actions)
+
+### Done ✅
+- Text diffing (Monaco diffEditor)
+- Local file compare (open or drag-and-drop)
+- System "Open with" associations for common text/code types
+- Inline / Side-by-side switch
+
+### Planned 🚧
+- Diff navigation: Previous/Next change buttons
+- Dark/Light theme toggle
+- Search: Find and highlight in diffs
+- Git integration: Single-file history compare (via git CLI)
+- Paste text compare
 
 ## License
 MIT License
