@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readFile } from "@tauri-apps/plugin-fs";
+import { check, type DownloadEvent } from "@tauri-apps/plugin-updater";
 import "./App.css";
 
 function App() {
@@ -35,10 +36,15 @@ function App() {
   const [originalPath, setOriginalPath] = useState<string | null>(null);
   const [modifiedPath, setModifiedPath] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
   const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
   const disposablesRef = useRef<Array<{ dispose: () => void }>>([]);
   const statusTimerRef = useRef<number | null>(null);
   const largeFileThreshold = 2 * 1024 * 1024;
+  const updateProgressRef = useRef<{ total?: number; done: number }>({
+    total: undefined,
+    done: 0,
+  });
 
   useEffect(() => {
     return () => {
@@ -232,53 +238,6 @@ function App() {
   );
 
   useEffect(() => {
-    let active = true;
-    let unlistenDrag: (() => void) | null = null;
-    let unlistenOpen: (() => void) | null = null;
-
-    const setup = async () => {
-      unlistenDrag = await getCurrentWindow().onDragDropEvent((event) => {
-        if (!active) {
-          return;
-        }
-        if (event.payload.type === "drop") {
-          const preferredSide = getDropSide(event.payload.position.x);
-          void applyPaths(event.payload.paths, "drop", preferredSide);
-        }
-      });
-
-      unlistenOpen = await listen<string[]>(
-        "gcompare://open-files",
-        (event) => {
-          if (!active) {
-            return;
-          }
-          if (Array.isArray(event.payload)) {
-            void applyPaths(event.payload, "open");
-          }
-        },
-      );
-
-      const initial = await invoke<string[]>("consume_open_paths");
-      if (active && Array.isArray(initial) && initial.length > 0) {
-        void applyPaths(initial, "open");
-      }
-    };
-
-    setup().catch((error) => console.error(error));
-
-    return () => {
-      active = false;
-      if (unlistenDrag) {
-        unlistenDrag();
-      }
-      if (unlistenOpen) {
-        unlistenOpen();
-      }
-    };
-  }, [applyPaths]);
-
-  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const isMod = event.metaKey || event.ctrlKey;
       if (!isMod) {
@@ -305,6 +264,118 @@ function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [handleOpenFile]);
+
+  const handleCheckUpdates = useCallback(async () => {
+    if (updateBusy) {
+      return;
+    }
+
+    setUpdateBusy(true);
+    updateProgressRef.current = { total: undefined, done: 0 };
+    showStatus("Checking for updates...");
+
+    try {
+      const update = await check();
+      if (!update) {
+        showStatus("You're on the latest version.");
+        return;
+      }
+
+      const confirmUpdate = window.confirm(
+        `Update ${update.version} is available. Download and install now?`,
+      );
+      if (!confirmUpdate) {
+        showStatus("Update canceled.");
+        return;
+      }
+
+      showStatus(`Downloading ${update.version}...`);
+      await update.downloadAndInstall((event: DownloadEvent) => {
+        if (event.event === "Started") {
+          updateProgressRef.current.total = event.data.contentLength;
+          updateProgressRef.current.done = 0;
+        } else if (event.event === "Progress") {
+          updateProgressRef.current.done += event.data.chunkLength;
+        }
+
+        const total = updateProgressRef.current.total;
+        if (total && total > 0) {
+          const pct = Math.min(
+            100,
+            Math.round((updateProgressRef.current.done / total) * 100),
+          );
+          showStatus(`Downloading update... ${pct}%`, 1200);
+        } else if (event.event === "Finished") {
+          showStatus("Download finished. Installing...", 1500);
+        }
+      });
+
+      showStatus("Update installed. Please restart the app.", 5000);
+    } catch (error) {
+      console.error(error);
+      showStatus("Update check failed.", 2500);
+    } finally {
+      setUpdateBusy(false);
+    }
+  }, [showStatus, updateBusy]);
+
+  useEffect(() => {
+    let active = true;
+    let unlistenDrag: (() => void) | null = null;
+    let unlistenOpen: (() => void) | null = null;
+    let unlistenMenu: (() => void) | null = null;
+
+    const setup = async () => {
+      unlistenDrag = await getCurrentWindow().onDragDropEvent((event) => {
+        if (!active) {
+          return;
+        }
+        if (event.payload.type === "drop") {
+          const preferredSide = getDropSide(event.payload.position.x);
+          void applyPaths(event.payload.paths, "drop", preferredSide);
+        }
+      });
+
+      unlistenOpen = await listen<string[]>(
+        "gcompare://open-files",
+        (event) => {
+          if (!active) {
+            return;
+          }
+          if (Array.isArray(event.payload)) {
+            void applyPaths(event.payload, "open");
+          }
+        },
+      );
+
+      unlistenMenu = await listen("gcompare://check-updates", () => {
+        if (!active) {
+          return;
+        }
+        void handleCheckUpdates();
+      });
+
+      const initial = await invoke<string[]>("consume_open_paths");
+      if (active && Array.isArray(initial) && initial.length > 0) {
+        void applyPaths(initial, "open");
+      }
+    };
+
+    setup().catch((error) => console.error(error));
+
+    return () => {
+      active = false;
+      if (unlistenDrag) {
+        unlistenDrag();
+      }
+      if (unlistenOpen) {
+        unlistenOpen();
+      }
+      if (unlistenMenu) {
+        unlistenMenu();
+      }
+    };
+  }, [applyPaths, handleCheckUpdates]);
 
   return (
     <main className="app">

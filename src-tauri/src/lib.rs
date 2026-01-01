@@ -1,6 +1,9 @@
 use std::sync::Mutex;
 
-use tauri::{Emitter, Manager};
+use tauri::{
+    menu::{Menu, MenuItem, Submenu, HELP_SUBMENU_ID},
+    Emitter, Manager,
+};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -36,9 +39,45 @@ fn collect_startup_paths() -> Vec<String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .menu(|app| {
+            let menu = Menu::default(app)?;
+            if let Some(tauri::menu::MenuItemKind::Submenu(help_menu)) =
+                menu.get(HELP_SUBMENU_ID)
+            {
+                help_menu.append(&MenuItem::with_id(
+                    app,
+                    "check_updates",
+                    "Check for Updates...",
+                    true,
+                    None::<&str>,
+                )?)?;
+            } else {
+                let help_menu = Submenu::with_id_and_items(
+                    app,
+                    HELP_SUBMENU_ID,
+                    "Help",
+                    true,
+                    &[&MenuItem::with_id(
+                        app,
+                        "check_updates",
+                        "Check for Updates...",
+                        true,
+                        None::<&str>,
+                    )?],
+                )?;
+                menu.append(&help_menu)?;
+            }
+            Ok(menu)
+        })
+        .on_menu_event(|app, event| {
+            if event.id() == "check_updates" {
+                let _ = app.emit("gcompare://check-updates", ());
+            }
+        })
         .manage(PendingOpenPaths::default())
         .setup(|app| {
             let startup_paths = collect_startup_paths();

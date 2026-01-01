@@ -9,6 +9,14 @@
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/GOLDhjy/GCompare/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMzRkNFMDIxQTc0MjY1N0IKUldSN1pVS25JZUQ4dzBxcFl4VHA1TW9aZWFGL29NL2xVSWQwR2w4aVN1R0FlN2xSMXVJc1lEN0gK"
+    }
+  },
   "app": {
     "windows": [
       {
@@ -25,6 +33,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
