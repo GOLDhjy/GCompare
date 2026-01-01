@@ -37,7 +37,28 @@ https://github.com/GOLDhjy/GCompare/releases
 - 视图切换：Ctrl/Cmd + 1 / 2
 
 ## 环境
+
 - 安装Tauri
+    - 安装Rust
+
+        Mac：
+        ```
+        curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh
+        ```
+        Win：
+        ```
+        winget install --id Rustlang.Rustup
+        ```
+        或者前往 https://www.rust-lang.org/zh-CN/tools/install 下载 rustup。
+
+        Win还要额外安装Cpp桌面开发：https://v2.tauri.app/zh-cn/start/prerequisites/#webview2
+        
+- 安装NodeJS
+
+    在安装完上面的东西之后还是有可能会报找不到Tauri，执行一下`npm install`，安装一下依赖。
+    `npm run tauri dev`
+
+- 用Tauri创建项目
 
 Bash：`sh <(curl https://create.tauri.app/sh)`
 PowerShell：`irm https://create.tauri.app/ps | iex`
