@@ -1,116 +1,249 @@
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Public+Sans:wght@400;500;600&family=Unbounded:wght@400;600&display=swap");
 
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafb);
-}
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+  color-scheme: light;
+  --bg: #f7f1e6;
+  --bg-wash: #f1e8d8;
+  --ink: #1e1a16;
+  --muted: #6b5f54;
+  --accent: #0f6b67;
+  --accent-strong: #0b4d4a;
+  --accent-warm: #dd7a2f;
+  --panel: #fffcf6;
+  --panel-strong: #f4ebdc;
+  --border: #dcc9af;
+  --shadow: 0 20px 40px -30px rgba(30, 26, 22, 0.6);
 }
 
-.container {
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
   margin: 0;
-  padding-top: 10vh;
+  min-height: 100vh;
+  font-family: "Public Sans", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: radial-gradient(
+      800px 500px at 15% 10%,
+      rgba(15, 107, 103, 0.12),
+      transparent 70%
+    ),
+    radial-gradient(
+      900px 600px at 90% 20%,
+      rgba(221, 122, 47, 0.12),
+      transparent 65%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.03) 0,
+      rgba(0, 0, 0, 0.03) 1px,
+      transparent 1px,
+      transparent 120px
+    ),
+    linear-gradient(130deg, var(--bg), var(--bg-wash));
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 52px clamp(20px, 4vw, 64px) 64px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  text-align: center;
+  gap: 28px;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
+.app-header {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  flex-wrap: wrap;
+  animation: rise 0.6s ease both;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
 }
 
-a:hover {
-  color: #535bf2;
+.brand-mark {
+  width: 62px;
+  height: 62px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  font-family: "Unbounded", "Public Sans", sans-serif;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  color: #fef7ee;
+  background: linear-gradient(135deg, var(--accent), var(--accent-warm));
+  box-shadow: 0 18px 30px -18px rgba(15, 107, 103, 0.7);
 }
 
-h1 {
-  text-align: center;
+.brand-text h1 {
+  margin: 4px 0 6px;
+  font-family: "Unbounded", "Public Sans", sans-serif;
+  font-size: clamp(28px, 4vw, 42px);
+  letter-spacing: 0.02em;
 }
 
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
+.brand-kicker {
+  margin: 0;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.32em;
+  color: var(--accent-strong);
+  font-weight: 600;
 }
 
-button {
+.brand-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 8px;
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+}
+
+.toggle-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  padding-left: 6px;
+}
+
+.toggle-btn {
+  border: none;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+.toggle-btn:hover {
+  color: var(--accent-strong);
 }
 
-input,
-button {
+.toggle-btn.active {
+  background: var(--accent);
+  color: #fef7ee;
+  box-shadow: 0 8px 20px -14px rgba(15, 107, 103, 0.8);
+}
+
+.input-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  animation: rise 0.6s ease both;
+  animation-delay: 0.12s;
+}
+
+.input-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px 18px 18px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.input-panel label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.input-panel textarea {
+  width: 100%;
+  min-height: 180px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fffaf2;
+  padding: 14px;
+  font-family: "IBM Plex Mono", "SF Mono", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+  resize: vertical;
   outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-#greet-input {
-  margin-right: 5px;
+.input-panel textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 107, 103, 0.18);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
+.diff-panel {
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+  height: clamp(320px, 50vh, 620px);
+  animation: rise 0.6s ease both;
+  animation-delay: 0.24s;
+}
+
+.diff-panel > div {
+  height: 100%;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .input-grid {
+    grid-template-columns: 1fr;
   }
 
-  a:hover {
-    color: #24c8db;
+  .brand {
+    width: 100%;
   }
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
+  .controls {
+    width: 100%;
+    justify-content: flex-start;
   }
 }

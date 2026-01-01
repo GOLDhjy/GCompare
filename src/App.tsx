@@ -1,49 +1,109 @@
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import { DiffEditor } from "@monaco-editor/react";
 import "./App.css";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  const [originalText, setOriginalText] = useState(
+    [
+      "Project: GCompare",
+      "Focus: Text and file diffs",
+      "Next: Git history compare",
+      "",
+      "- Fast navigation",
+      "- Clean layout",
+      "- Cross-platform",
+    ].join("\n"),
+  );
+  const [modifiedText, setModifiedText] = useState(
+    [
+      "Project: GCompare",
+      "Focus: Text, file, and Git diffs",
+      "Next: History compare and packaging",
+      "",
+      "- Fast navigation",
+      "- Clean layout",
+      "- Cross-platform",
+      "- Git CLI support",
+    ].join("\n"),
+  );
+  const [sideBySide, setSideBySide] = useState(true);
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <main className="app">
+      <header className="app-header">
+        <div className="brand">
+          <div className="brand-mark" aria-hidden="true">
+            GC
+          </div>
+          <div className="brand-text">
+            <p className="brand-kicker">Diff Studio</p>
+            <h1>GCompare</h1>
+            <p className="brand-subtitle">
+              Text, file, and Git history diffs with a clean workflow.
+            </p>
+          </div>
+        </div>
+        <div className="controls">
+          <div className="toggle">
+            <span className="toggle-label">View</span>
+            <button
+              className={sideBySide ? "toggle-btn active" : "toggle-btn"}
+              onClick={() => setSideBySide(true)}
+              type="button"
+            >
+              Side-by-side
+            </button>
+            <button
+              className={!sideBySide ? "toggle-btn active" : "toggle-btn"}
+              onClick={() => setSideBySide(false)}
+              type="button"
+            >
+              Inline
+            </button>
+          </div>
+        </div>
+      </header>
 
-      <div className="row">
-        <a href="https://vitejs.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://reactjs.org" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+      <section className="input-grid" aria-label="Diff inputs">
+        <div className="input-panel">
+          <label htmlFor="original-text">Original</label>
+          <textarea
+            id="original-text"
+            value={originalText}
+            onChange={(event) => setOriginalText(event.currentTarget.value)}
+            spellCheck={false}
+          />
+        </div>
+        <div className="input-panel">
+          <label htmlFor="modified-text">Modified</label>
+          <textarea
+            id="modified-text"
+            value={modifiedText}
+            onChange={(event) => setModifiedText(event.currentTarget.value)}
+            spellCheck={false}
+          />
+        </div>
+      </section>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+      <section className="diff-panel" aria-label="Diff preview">
+        <DiffEditor
+          original={originalText}
+          modified={modifiedText}
+          language="markdown"
+          theme="vs"
+          options={{
+            renderSideBySide: sideBySide,
+            readOnly: true,
+            originalEditable: false,
+            minimap: { enabled: false },
+            renderOverviewRuler: false,
+            lineNumbers: "on",
+            fontFamily: "\"IBM Plex Mono\", \"SF Mono\", Consolas, monospace",
+            fontSize: 13,
+            wordWrap: "on",
+          }}
         />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
+      </section>
     </main>
   );
 }
