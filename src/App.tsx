@@ -71,7 +71,6 @@ function App() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
   const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
-  const disposablesRef = useRef<Array<{ dispose: () => void }>>([]);
   const statusTimerRef = useRef<number | null>(null);
   const openSlotRef = useRef<"original" | "modified">("original");
   const pathStateRef = useRef({ original: false, modified: false });
@@ -85,8 +84,6 @@ function App() {
 
   useEffect(() => {
     return () => {
-      disposablesRef.current.forEach((disposable) => disposable.dispose());
-      disposablesRef.current = [];
       diffEditorRef.current = null;
       if (statusTimerRef.current) {
         window.clearTimeout(statusTimerRef.current);
@@ -123,27 +120,11 @@ function App() {
 
   const handleDiffMount = (editor: MonacoDiffEditor) => {
     diffEditorRef.current = editor;
-    disposablesRef.current.forEach((disposable) => disposable.dispose());
-    disposablesRef.current = [];
 
     const model = editor.getModel();
     if (!model) {
       return;
     }
-
-    const originalModel = model.original;
-    const modifiedModel = model.modified;
-
-    const originalDisposable = originalModel.onDidChangeContent(() => {
-      const value = originalModel.getValue();
-      setOriginalText((prev) => (prev === value ? prev : value));
-    });
-    const modifiedDisposable = modifiedModel.onDidChangeContent(() => {
-      const value = modifiedModel.getValue();
-      setModifiedText((prev) => (prev === value ? prev : value));
-    });
-
-    disposablesRef.current.push(originalDisposable, modifiedDisposable);
 
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
     const message = `[perf] DiffEditor mounted at ${Math.round(now - appStart)}ms`;
