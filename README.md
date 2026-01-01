@@ -36,6 +36,11 @@ https://github.com/GOLDhjy/GCompare/releases
 - 右侧打开：Ctrl/Cmd + Shift + O
 - 视图切换：Ctrl/Cmd + 1 / 2
 
+## 环境
+- 安装Tauri
+
+Bash：`sh <(curl https://create.tauri.app/sh)`
+PowerShell：`irm https://create.tauri.app/ps | iex`
 ## 开发
 环境要求：Node.js、Rust、Tauri 依赖
 
