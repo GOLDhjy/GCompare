@@ -26,3 +26,4 @@ dist-ssr
 # Tauri updater private key
 src-tauri/updater.key
 .claude/settings.local.json
+CLAUDE.md
