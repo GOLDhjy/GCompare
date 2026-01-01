@@ -311,11 +311,7 @@ function App() {
       <div className="app-shell">
         <header className="app-header">
           <div className="brand">
-            <div className="brand-mark" aria-hidden="true">
-              GC
-            </div>
             <div className="brand-text">
-              <p className="brand-kicker">Diff Studio</p>
               <h1>GCompare</h1>
             </div>
           </div>
