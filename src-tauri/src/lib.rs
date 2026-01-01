@@ -1,5 +1,6 @@
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -33,6 +34,25 @@ fn collect_startup_paths() -> Vec<String> {
         .filter_map(|arg| {
             let path = std::path::PathBuf::from(arg);
             if path.is_file() {
+                Some(path.to_string_lossy().to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn collect_cli_paths(args: Vec<String>) -> Vec<String> {
+    let exe_path = std::env::current_exe().ok();
+    args.into_iter()
+        .filter_map(|arg| {
+            let path = PathBuf::from(&arg);
+            if path.is_file() {
+                if let Some(exe) = exe_path.as_ref() {
+                    if *exe == path {
+                        return None;
+                    }
+                }
                 Some(path.to_string_lossy().to_string())
             } else {
                 None
@@ -76,6 +96,15 @@ pub fn run() {
             }
         })
         .plugin(log_plugin)
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            let paths = collect_cli_paths(argv);
+            if !paths.is_empty() {
+                let state = app.state::<PendingOpenPaths>();
+                let mut pending = state.0.lock().expect("pending open paths lock");
+                pending.extend(paths.clone());
+                let _ = app.emit("gcompare://open-files", paths);
+            }
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())

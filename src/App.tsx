@@ -11,6 +11,8 @@ import "./App.css";
 
 const appStart = typeof performance !== "undefined" ? performance.now() : Date.now();
 const logFilePath = "startup.log";
+const isWindows =
+  typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent);
 
 const appendStartupLog = async (message: string) => {
   const timestamp = new Date().toISOString();
@@ -74,6 +76,10 @@ function App() {
   const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
   const disposablesRef = useRef<Array<{ dispose: () => void }>>([]);
   const statusTimerRef = useRef<number | null>(null);
+  const openSlotRef = useRef<"original" | "modified">("original");
+  const pathStateRef = useRef({ original: false, modified: false });
+  const openQueueRef = useRef<string[]>([]);
+  const openQueueTimerRef = useRef<number | null>(null);
   const largeFileThreshold = 2 * 1024 * 1024;
   const updateProgressRef = useRef<{ total?: number; done: number }>({
     total: undefined,
@@ -89,6 +95,11 @@ function App() {
         window.clearTimeout(statusTimerRef.current);
         statusTimerRef.current = null;
       }
+      if (openQueueTimerRef.current) {
+        window.clearTimeout(openQueueTimerRef.current);
+        openQueueTimerRef.current = null;
+      }
+      openQueueRef.current = [];
     };
   }, []);
 
@@ -187,13 +198,37 @@ function App() {
     [],
   );
 
+  const resolveOpenSide = useCallback(() => {
+    const state = pathStateRef.current;
+    if (!state.original && state.modified) {
+      return "original";
+    }
+    if (state.original && !state.modified) {
+      return "modified";
+    }
+    const next = openSlotRef.current;
+    openSlotRef.current = next === "original" ? "modified" : "original";
+    return next;
+  }, []);
+
+  const reserveSide = useCallback((side: "original" | "modified") => {
+    const state = pathStateRef.current;
+    const wasEmpty = !state[side];
+    state[side] = true;
+    return wasEmpty;
+  }, []);
+
   const applyPaths = useCallback(
     async (
       paths: string[],
       source: "drop" | "open",
       preferredSide?: "original" | "modified",
     ) => {
-      const filtered = paths.filter(Boolean).slice(0, 2);
+      const normalizedPaths =
+        source === "open" && !preferredSide && isWindows && paths.length === 2
+          ? [paths[1], paths[0]]
+          : paths;
+      const filtered = normalizedPaths.filter(Boolean).slice(0, 2);
       if (filtered.length === 0) {
         return;
       }
@@ -201,18 +236,23 @@ function App() {
       let loaded = 0;
       const largeSides: Array<"Left" | "Right"> = [];
       if (filtered.length === 1) {
-        const side = preferredSide ?? "original";
+        const side = preferredSide ?? resolveOpenSide();
+        const sideWasEmpty = reserveSide(side);
         const result = await loadFileToSide(filtered[0], side);
         if (result.ok) {
           loaded = 1;
           if (result.size >= largeFileThreshold) {
             largeSides.push(side === "original" ? "Left" : "Right");
           }
+        } else if (sideWasEmpty) {
+          pathStateRef.current[side] = false;
         }
       } else {
         const [first, second] = filtered;
         const firstSide = preferredSide ?? "original";
         const secondSide = firstSide === "original" ? "modified" : "original";
+        const firstWasEmpty = reserveSide(firstSide);
+        const secondWasEmpty = reserveSide(secondSide);
         const results = await Promise.all([
           loadFileToSide(first, firstSide),
           loadFileToSide(second, secondSide),
@@ -224,6 +264,12 @@ function App() {
             largeSides.push(side === "original" ? "Left" : "Right");
           }
         });
+        if (!results[0].ok && firstWasEmpty) {
+          pathStateRef.current[firstSide] = false;
+        }
+        if (!results[1].ok && secondWasEmpty) {
+          pathStateRef.current[secondSide] = false;
+        }
       }
 
       if (loaded > 0) {
@@ -240,11 +286,41 @@ function App() {
         showStatus("Failed to load files.", 2500);
       }
     },
-    [largeFileThreshold, loadFileToSide, showStatus],
+    [largeFileThreshold, loadFileToSide, reserveSide, resolveOpenSide, showStatus],
+  );
+
+  const flushOpenQueue = useCallback(() => {
+    const pending = openQueueRef.current;
+    openQueueRef.current = [];
+    if (openQueueTimerRef.current) {
+      window.clearTimeout(openQueueTimerRef.current);
+      openQueueTimerRef.current = null;
+    }
+    if (pending.length > 0) {
+      void applyPaths(pending, "open");
+    }
+  }, [applyPaths]);
+
+  const enqueueOpenPaths = useCallback(
+    (paths: string[]) => {
+      const next = paths.filter(Boolean);
+      if (next.length === 0) {
+        return;
+      }
+      if (openQueueRef.current.length === 0 && openQueueTimerRef.current === null) {
+        openSlotRef.current = "modified";
+      }
+      openQueueRef.current = openQueueRef.current.concat(next);
+      if (openQueueTimerRef.current === null) {
+        openQueueTimerRef.current = window.setTimeout(flushOpenQueue, 250);
+      }
+    },
+    [flushOpenQueue],
   );
 
   const handleOpenFile = useCallback(
     async (side: "original" | "modified") => {
+      const sideWasEmpty = reserveSide(side);
       try {
         const selection = await open({
           multiple: false,
@@ -252,6 +328,9 @@ function App() {
         });
 
         if (!selection || Array.isArray(selection)) {
+          if (sideWasEmpty) {
+            pathStateRef.current[side] = false;
+          }
           return;
         }
 
@@ -266,14 +345,20 @@ function App() {
             showStatus("File loaded.");
           }
         } else {
+          if (sideWasEmpty) {
+            pathStateRef.current[side] = false;
+          }
           showStatus("Failed to load file.", 2500);
         }
       } catch (error) {
         console.error(error);
+        if (sideWasEmpty) {
+          pathStateRef.current[side] = false;
+        }
         showStatus("Failed to load file.", 2500);
       }
     },
-    [formatBytes, largeFileThreshold, loadFileToSide, showStatus],
+    [formatBytes, largeFileThreshold, loadFileToSide, reserveSide, showStatus],
   );
 
   useEffect(() => {
@@ -389,7 +474,7 @@ function App() {
             return;
           }
           if (Array.isArray(event.payload)) {
-            void applyPaths(event.payload, "open");
+            enqueueOpenPaths(event.payload);
           }
         },
       );
@@ -403,7 +488,7 @@ function App() {
 
       const initial = await invoke<string[]>("consume_open_paths");
       if (active && Array.isArray(initial) && initial.length > 0) {
-        void applyPaths(initial, "open");
+        enqueueOpenPaths(initial);
       }
     };
 
@@ -421,7 +506,7 @@ function App() {
         unlistenMenu();
       }
     };
-  }, [applyPaths, handleCheckUpdates]);
+  }, [applyPaths, enqueueOpenPaths, handleCheckUpdates]);
 
   return (
     <main className="app">

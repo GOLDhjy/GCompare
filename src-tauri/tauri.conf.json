@@ -48,6 +48,11 @@
       "webviewInstallMode": {
         "type": "downloadBootstrapper",
         "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "installerHooks": "nsis-hooks.nsh"
       }
     },
     "fileAssociations": [
