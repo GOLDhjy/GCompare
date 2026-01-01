@@ -2,15 +2,15 @@
 
 :root {
   color-scheme: light;
-  --bg: #f7f1e6;
-  --bg-wash: #f1e8d8;
+  --bg: #e6e0d6;
+  --bg-wash: #dcd4c6;
   --ink: #1e1a16;
   --muted: #6b5f54;
   --accent: #0f6b67;
   --accent-strong: #0b4d4a;
   --accent-warm: #dd7a2f;
-  --panel: #fffcf6;
-  --panel-strong: #f4ebdc;
+  --panel: #fbf8f2;
+  --panel-strong: #f2ebdf;
   --border: #dcc9af;
   --shadow: 0 20px 40px -30px rgba(30, 26, 22, 0.6);
 }
@@ -26,24 +26,7 @@ body {
   min-height: 100vh;
   font-family: "Public Sans", "Segoe UI", sans-serif;
   color: var(--ink);
-  background: radial-gradient(
-      800px 500px at 15% 10%,
-      rgba(15, 107, 103, 0.12),
-      transparent 70%
-    ),
-    radial-gradient(
-      900px 600px at 90% 20%,
-      rgba(221, 122, 47, 0.12),
-      transparent 65%
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(0, 0, 0, 0.03) 0,
-      rgba(0, 0, 0, 0.03) 1px,
-      transparent 1px,
-      transparent 120px
-    ),
-    linear-gradient(130deg, var(--bg), var(--bg-wash));
+  background: linear-gradient(160deg, var(--bg), var(--bg-wash));
 }
 
 #root {
@@ -51,37 +34,52 @@ body {
 }
 
 .app {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 52px clamp(20px, 4vw, 64px) 64px;
+  min-height: 100vh;
+  height: 100vh;
+  width: 100%;
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 18px;
+}
+
+.app-shell {
+  flex: 1;
+  min-height: 0;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 28px 50px -40px rgba(15, 12, 8, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .app-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   gap: 24px;
   flex-wrap: wrap;
-  animation: rise 0.6s ease both;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f7f2e8, #f2e8d8);
+  border-bottom: 1px solid var(--border);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
 }
 
 .brand-mark {
-  width: 62px;
-  height: 62px;
-  border-radius: 16px;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
   font-family: "Unbounded", "Public Sans", sans-serif;
-  font-size: 18px;
+  font-size: 14px;
   letter-spacing: 0.08em;
   color: #fef7ee;
   background: linear-gradient(135deg, var(--accent), var(--accent-warm));
@@ -89,17 +87,17 @@ body {
 }
 
 .brand-text h1 {
-  margin: 4px 0 6px;
+  margin: 2px 0 4px;
   font-family: "Unbounded", "Public Sans", sans-serif;
-  font-size: clamp(28px, 4vw, 42px);
+  font-size: clamp(22px, 2.8vw, 30px);
   letter-spacing: 0.02em;
 }
 
 .brand-kicker {
   margin: 0;
   text-transform: uppercase;
-  font-size: 12px;
-  letter-spacing: 0.32em;
+  font-size: 11px;
+  letter-spacing: 0.26em;
   color: var(--accent-strong);
   font-weight: 600;
 }
@@ -107,7 +105,7 @@ body {
 .brand-subtitle {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .controls {
@@ -120,7 +118,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--panel);
+  background: #fffdf9;
   border: 1px solid var(--border);
   padding: 8px;
   border-radius: 999px;
@@ -157,63 +155,15 @@ body {
   box-shadow: 0 8px 20px -14px rgba(15, 107, 103, 0.8);
 }
 
-.input-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-  animation: rise 0.6s ease both;
-  animation-delay: 0.12s;
-}
-
-.input-panel {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 16px 18px 18px;
-  box-shadow: var(--shadow);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.input-panel label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: var(--accent-strong);
-  font-weight: 600;
-}
-
-.input-panel textarea {
-  width: 100%;
-  min-height: 180px;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  background: #fffaf2;
-  padding: 14px;
-  font-family: "IBM Plex Mono", "SF Mono", Consolas, monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--ink);
-  resize: vertical;
-  outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.input-panel textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(15, 107, 103, 0.18);
-}
-
 .diff-panel {
+  flex: 1;
+  min-height: 0;
+  margin: 18px;
   background: var(--panel-strong);
-  border: 1px solid var(--border);
-  border-radius: 20px;
+  border: 1px solid rgba(220, 201, 175, 0.7);
+  border-radius: 18px;
   padding: 12px;
-  box-shadow: var(--shadow);
-  height: clamp(320px, 50vh, 620px);
-  animation: rise 0.6s ease both;
-  animation-delay: 0.24s;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .diff-panel > div {
@@ -222,22 +172,7 @@ body {
   border-radius: 12px;
 }
 
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @media (max-width: 900px) {
-  .input-grid {
-    grid-template-columns: 1fr;
-  }
-
   .brand {
     width: 100%;
   }
@@ -245,5 +180,9 @@ body {
   .controls {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .diff-panel {
+    margin: 14px;
   }
 }
