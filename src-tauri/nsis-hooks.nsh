@@ -1,8 +1,7 @@
 !macro GCOMPARE_ADD_CONTEXT_MENU EXT
   WriteRegStr SHCTX "Software\\Classes\\SystemFileAssociations\\${EXT}\\shell\\GCompare" "" "Open with GCompare"
   WriteRegStr SHCTX "Software\\Classes\\SystemFileAssociations\\${EXT}\\shell\\GCompare" "Icon" "$INSTDIR\\${MAINBINARYNAME}.exe,0"
-  WriteRegStr SHCTX "Software\\Classes\\SystemFileAssociations\\${EXT}\\shell\\GCompare" "MultiSelectModel" "Player"
-  WriteRegStr SHCTX "Software\\Classes\\SystemFileAssociations\\${EXT}\\shell\\GCompare\\command" "" "$\"$INSTDIR\\${MAINBINARYNAME}.exe$\" %*"
+  WriteRegStr SHCTX "Software\\Classes\\SystemFileAssociations\\${EXT}\\shell\\GCompare\\command" "" "$\"$INSTDIR\\${MAINBINARYNAME}.exe$\" $\"%1$\""
 !macroend
 
 !macro GCOMPARE_REMOVE_CONTEXT_MENU EXT

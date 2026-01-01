@@ -97,6 +97,11 @@ pub fn run() {
         })
         .plugin(log_plugin)
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
             let paths = collect_cli_paths(argv);
             if !paths.is_empty() {
                 let state = app.state::<PendingOpenPaths>();

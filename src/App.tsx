@@ -11,9 +11,6 @@ import "./App.css";
 
 const appStart = typeof performance !== "undefined" ? performance.now() : Date.now();
 const logFilePath = "startup.log";
-const isWindows =
-  typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent);
-
 const appendStartupLog = async (message: string) => {
   const timestamp = new Date().toISOString();
   const line = `[${timestamp}] ${message}`;
@@ -224,10 +221,7 @@ function App() {
       source: "drop" | "open",
       preferredSide?: "original" | "modified",
     ) => {
-      const normalizedPaths =
-        source === "open" && !preferredSide && isWindows && paths.length === 2
-          ? [paths[1], paths[0]]
-          : paths;
+      const normalizedPaths = paths;
       const filtered = normalizedPaths.filter(Boolean).slice(0, 2);
       if (filtered.length === 0) {
         return;
@@ -308,7 +302,7 @@ function App() {
         return;
       }
       if (openQueueRef.current.length === 0 && openQueueTimerRef.current === null) {
-        openSlotRef.current = "modified";
+        openSlotRef.current = "original";
       }
       openQueueRef.current = openQueueRef.current.concat(next);
       if (openQueueTimerRef.current === null) {
@@ -394,6 +388,34 @@ function App() {
     const message = `[perf] App mounted at ${Math.round(now - appStart)}ms`;
     console.info(message);
     void appendStartupLog(message);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refreshFontMetrics = async () => {
+      if (typeof document === "undefined" || !("fonts" in document)) {
+        return;
+      }
+      try {
+        await document.fonts.ready;
+        if (cancelled) {
+          return;
+        }
+        const monaco = await loader.init();
+        if (cancelled) {
+          return;
+        }
+        monaco.editor.remeasureFonts();
+        diffEditorRef.current?.layout();
+      } catch (error) {
+        console.warn("Failed to remeasure Monaco fonts.", error);
+      }
+    };
+
+    void refreshFontMetrics();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleCheckUpdates = useCallback(async () => {
