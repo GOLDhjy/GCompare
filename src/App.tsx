@@ -10,28 +10,28 @@ import { check, type DownloadEvent } from "@tauri-apps/plugin-updater";
 import "./App.css";
 
 const appStart = typeof performance !== "undefined" ? performance.now() : Date.now();
-const logFilePath = "logs/startup.log";
+const logFilePath = "startup.log";
 
 const appendStartupLog = async (message: string) => {
   const timestamp = new Date().toISOString();
   const line = `[${timestamp}] ${message}`;
 
   try {
-    await mkdir("logs", { recursive: true, baseDir: BaseDirectory.AppData });
+    await mkdir("", { recursive: true, baseDir: BaseDirectory.AppLog });
   } catch {
     // Best-effort; continue even if the folder already exists or cannot be created.
   }
 
   let existing = "";
   try {
-    existing = await readTextFile(logFilePath, { baseDir: BaseDirectory.AppData });
+    existing = await readTextFile(logFilePath, { baseDir: BaseDirectory.AppLog });
   } catch {
     existing = "";
   }
 
   const next = existing ? `${existing}\n${line}` : line;
   try {
-    await writeTextFile(logFilePath, next, { baseDir: BaseDirectory.AppData });
+    await writeTextFile(logFilePath, next, { baseDir: BaseDirectory.AppLog });
   } catch (error) {
     console.warn("Failed to write startup log.", error);
   }

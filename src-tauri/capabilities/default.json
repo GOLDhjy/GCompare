@@ -10,6 +10,7 @@
     "opener:default",
     "dialog:default",
     "fs:default",
+    "fs:allow-applog-write",
     {
       "identifier": "fs:scope",
       "allow": [

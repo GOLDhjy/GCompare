@@ -1,6 +1,6 @@
 [package]
 name = "gcompare"
-version = "0.1.0"
+version = "0.1.5"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -27,4 +27,3 @@ tauri-plugin-fs = "2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
-
