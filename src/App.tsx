@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
-import { readTextFile } from "@tauri-apps/plugin-fs";
+import { readFile } from "@tauri-apps/plugin-fs";
 import "./App.css";
 
 function App() {
@@ -38,6 +38,7 @@ function App() {
   const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
   const disposablesRef = useRef<Array<{ dispose: () => void }>>([]);
   const statusTimerRef = useRef<number | null>(null);
+  const largeFileThreshold = 2 * 1024 * 1024;
 
   useEffect(() => {
     return () => {
@@ -60,6 +61,16 @@ function App() {
       setStatusMessage(null);
       statusTimerRef.current = null;
     }, timeout);
+  }, []);
+
+  const formatBytes = useCallback((bytes: number) => {
+    if (bytes >= 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    if (bytes >= 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    return `${bytes} B`;
   }, []);
 
   const handleDiffMount = (editor: MonacoDiffEditor) => {
@@ -112,7 +123,9 @@ function App() {
   const loadFileToSide = useCallback(
     async (path: string, side: "original" | "modified") => {
       try {
-        const contents = await readTextFile(path);
+        const bytes = await readFile(path);
+        const decoder = new TextDecoder("utf-8", { fatal: false });
+        const contents = decoder.decode(bytes).replace(/\r\n?/g, "\n");
         if (side === "original") {
           setOriginalPath(path);
           setOriginalText(contents);
@@ -120,10 +133,10 @@ function App() {
           setModifiedPath(path);
           setModifiedText(contents);
         }
-        return true;
+        return { ok: true, size: bytes.length };
       } catch (error) {
         console.error(error);
-        return false;
+        return { ok: false, size: 0 };
       }
     },
     [],
@@ -141,10 +154,15 @@ function App() {
       }
 
       let loaded = 0;
+      const largeSides: Array<"Left" | "Right"> = [];
       if (filtered.length === 1) {
         const side = preferredSide ?? "original";
-        if (await loadFileToSide(filtered[0], side)) {
+        const result = await loadFileToSide(filtered[0], side);
+        if (result.ok) {
           loaded = 1;
+          if (result.size >= largeFileThreshold) {
+            largeSides.push(side === "original" ? "Left" : "Right");
+          }
         }
       } else {
         const [first, second] = filtered;
@@ -154,45 +172,64 @@ function App() {
           loadFileToSide(first, firstSide),
           loadFileToSide(second, secondSide),
         ]);
-        loaded = results.filter(Boolean).length;
+        loaded = results.filter((result) => result.ok).length;
+        results.forEach((result, index) => {
+          if (result.ok && result.size >= largeFileThreshold) {
+            const side = index === 0 ? firstSide : secondSide;
+            largeSides.push(side === "original" ? "Left" : "Right");
+          }
+        });
       }
 
       if (loaded > 0) {
         const label = source === "drop" ? "Dropped" : "Loaded";
-        showStatus(`${label} ${loaded} file${loaded > 1 ? "s" : ""}.`);
+        const largeNote =
+          largeSides.length > 0
+            ? ` Large: ${largeSides.join(", ")}.`
+            : "";
+        showStatus(
+          `${label} ${loaded} file${loaded > 1 ? "s" : ""}.${largeNote}`,
+          2600,
+        );
       } else {
         showStatus("Failed to load files.", 2500);
       }
     },
-    [loadFileToSide, showStatus],
+    [largeFileThreshold, loadFileToSide, showStatus],
   );
 
-  const handleOpenFile = async (side: "original" | "modified") => {
-    try {
-      const selection = await open({
-        multiple: false,
-        directory: false,
-      });
+  const handleOpenFile = useCallback(
+    async (side: "original" | "modified") => {
+      try {
+        const selection = await open({
+          multiple: false,
+          directory: false,
+        });
 
-      if (!selection || Array.isArray(selection)) {
-        return;
+        if (!selection || Array.isArray(selection)) {
+          return;
+        }
+
+        const result = await loadFileToSide(selection, side);
+        if (result.ok) {
+          if (result.size >= largeFileThreshold) {
+            showStatus(
+              `File loaded. Large: ${formatBytes(result.size)}.`,
+              2600,
+            );
+          } else {
+            showStatus("File loaded.");
+          }
+        } else {
+          showStatus("Failed to load file.", 2500);
+        }
+      } catch (error) {
+        console.error(error);
+        showStatus("Failed to load file.", 2500);
       }
-
-      const contents = await readTextFile(selection);
-      if (side === "original") {
-        setOriginalPath(selection);
-        setOriginalText(contents);
-      } else {
-        setModifiedPath(selection);
-        setModifiedText(contents);
-      }
-
-      showStatus("File loaded.");
-    } catch (error) {
-      console.error(error);
-      showStatus("Failed to load file.", 2500);
-    }
-  };
+    },
+    [formatBytes, largeFileThreshold, loadFileToSide, showStatus],
+  );
 
   useEffect(() => {
     let active = true;
@@ -240,6 +277,34 @@ function App() {
       }
     };
   }, [applyPaths]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isMod = event.metaKey || event.ctrlKey;
+      if (!isMod) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "o") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          void handleOpenFile("modified");
+        } else {
+          void handleOpenFile("original");
+        }
+      } else if (key === "1") {
+        event.preventDefault();
+        setSideBySide(true);
+      } else if (key === "2") {
+        event.preventDefault();
+        setSideBySide(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleOpenFile]);
 
   return (
     <main className="app">
@@ -302,6 +367,9 @@ function App() {
           </span>
           <span className="status-item status-message">
             {statusMessage ?? ""}
+          </span>
+          <span className="status-item hint">
+            Shortcuts: Ctrl/Cmd+O Left, Ctrl/Cmd+Shift+O Right, Ctrl/Cmd+1/2 View
           </span>
         </div>
 
