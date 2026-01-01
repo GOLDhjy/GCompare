@@ -10,7 +10,7 @@
 
 [English version](README_EN.md)
 
-GCompare 是一个基于 Tauri v2 的跨平台文本/文件差异对比工具，目标是做一个轻量、可离线、面向开发者的对比器。
+GCompare 是一个基于 Tauri v2 的跨平台文本/文件差异对比工具，目标是做一个轻量、可离线、面向开发者的对比工具，尽量保持最后的包体较小。
 
 ## 功能
 - 文本差异对比（Monaco diffEditor）
