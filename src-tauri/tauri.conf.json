@@ -31,6 +31,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "bundleName": "GCompare"
+    },
     "fileAssociations": [
       {
         "ext": [

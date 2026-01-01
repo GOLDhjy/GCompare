@@ -317,9 +317,6 @@ function App() {
             <div className="brand-text">
               <p className="brand-kicker">Diff Studio</p>
               <h1>GCompare</h1>
-              <p className="brand-subtitle">
-                Text, file, and Git history diffs with a clean workflow.
-              </p>
             </div>
           </div>
           <div className="controls">
@@ -329,31 +326,32 @@ function App() {
                 type="button"
                 onClick={() => handleOpenFile("original")}
               >
-                Open Left File
+                <span className="action-label-full">Open Left File</span>
+                <span className="action-label-short">Left File</span>
               </button>
               <button
                 className="action-btn"
                 type="button"
                 onClick={() => handleOpenFile("modified")}
               >
-                Open Right File
+                <span className="action-label-full">Open Right File</span>
+                <span className="action-label-short">Right File</span>
               </button>
             </div>
             <div className="toggle">
-              <span className="toggle-label">View</span>
               <button
-                className={sideBySide ? "toggle-btn active" : "toggle-btn"}
-                onClick={() => setSideBySide(true)}
+                className="toggle-switch"
+                onClick={() => setSideBySide((prev) => !prev)}
                 type="button"
+                aria-pressed={!sideBySide}
               >
-                Side-by-side
-              </button>
-              <button
-                className={!sideBySide ? "toggle-btn active" : "toggle-btn"}
-                onClick={() => setSideBySide(false)}
-                type="button"
-              >
-                Inline
+                <span className="toggle-text">
+                  Inline
+                </span>
+                <span className="toggle-state">{sideBySide ? "Off" : "On"}</span>
+                <span className="toggle-track" aria-hidden="true">
+                  <span className="toggle-knob" />
+                </span>
               </button>
             </div>
           </div>
@@ -369,7 +367,7 @@ function App() {
             {statusMessage ?? ""}
           </span>
           <span className="status-item hint">
-            Shortcuts: Ctrl/Cmd+O Left, Ctrl/Cmd+Shift+O Right, Ctrl/Cmd+1/2 View
+            Shortcuts: Ctrl/Cmd+O Left, Ctrl/Cmd+Shift+O Right, Ctrl/Cmd+1/2 Mode
           </span>
         </div>
 
