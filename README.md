@@ -4,6 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/GOLDhjy/GCompare)](https://github.com/GOLDhjy/GCompare/releases)
 [![Stars](https://img.shields.io/github/stars/GOLDhjy/GCompare)](https://github.com/GOLDhjy/GCompare/stargazers)
 
+
 中文为主：这是中文版 README。English version: [README_EN.md](README_EN.md)
 
 GCompare 是一个基于 Tauri v2 的跨平台文本/文件差异对比工具，目标是做一个轻量、可离线、面向开发者的对比器。
@@ -14,6 +15,8 @@ GCompare 是一个基于 Tauri v2 的跨平台文本/文件差异对比工具，
 - 系统“打开方式”关联（常见文本/代码扩展名）
 - Inline / Side-by-side 切换
 - 未来：Git 单文件历史对比（基于 git CLI）
+
+![GCompare v0.1.0](./public/Images/v0.1.0.png)
 
 ## 下载
 请前往 Release 页面下载：  

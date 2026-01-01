@@ -4,6 +4,8 @@
 [![Release](https://img.shields.io/github/v/release/GOLDhjy/GCompare)](https://github.com/GOLDhjy/GCompare/releases)
 [![Stars](https://img.shields.io/github/stars/GOLDhjy/GCompare)](https://github.com/GOLDhjy/GCompare/stargazers)
 
+![GCompare v0.1.0](./public/Images/v0.1.0.png)
+
 English README. 中文版: [README.md](README.md)
 
 GCompare is a cross-platform text/file diff tool built with Tauri v2. It focuses on a lightweight, offline-first workflow for developers.
