@@ -49,5 +49,12 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "GCompare ${{ github.ref_name }}"
+          releaseBody: |
+            ## 下载说明
+            - **macOS (Apple Silicon)**: `*.app.tar.gz` 或 `*.dmg`
+            - **Windows**: `*-setup.exe` 或 `*_en-US.msi`
+            - **Linux (Ubuntu/Debian)**: `*.deb`
+            - **Linux (Fedora/RHEL)**: `*.rpm`
+            - **Linux (通用)**: `*.AppImage`（体积较大，便携版）
           releaseDraft: false
           prerelease: false
