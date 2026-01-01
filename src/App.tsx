@@ -1,12 +1,46 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DiffEditor, type MonacoDiffEditor } from "@monaco-editor/react";
+import { DiffEditor, loader, type MonacoDiffEditor } from "@monaco-editor/react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
-import { readFile } from "@tauri-apps/plugin-fs";
+import { mkdir, readFile, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { BaseDirectory } from "@tauri-apps/api/path";
 import { check, type DownloadEvent } from "@tauri-apps/plugin-updater";
 import "./App.css";
+
+const appStart = typeof performance !== "undefined" ? performance.now() : Date.now();
+const logFilePath = "logs/startup.log";
+
+const appendStartupLog = async (message: string) => {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] ${message}`;
+
+  try {
+    await mkdir("logs", { recursive: true, baseDir: BaseDirectory.AppData });
+  } catch {
+    // Best-effort; continue even if the folder already exists or cannot be created.
+  }
+
+  let existing = "";
+  try {
+    existing = await readTextFile(logFilePath, { baseDir: BaseDirectory.AppData });
+  } catch {
+    existing = "";
+  }
+
+  const next = existing ? `${existing}\n${line}` : line;
+  try {
+    await writeTextFile(logFilePath, next, { baseDir: BaseDirectory.AppData });
+  } catch (error) {
+    console.warn("Failed to write startup log.", error);
+  }
+};
+
+if (import.meta.env.PROD && typeof window !== "undefined") {
+  const monacoBaseUrl = new URL("./monaco/vs", window.location.href).toString();
+  loader.config({ paths: { vs: monacoBaseUrl } });
+}
 
 function App() {
   const [originalText, setOriginalText] = useState(
@@ -102,6 +136,11 @@ function App() {
     });
 
     disposablesRef.current.push(originalDisposable, modifiedDisposable);
+
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const message = `[perf] DiffEditor mounted at ${Math.round(now - appStart)}ms`;
+    console.info(message);
+    void appendStartupLog(message);
   };
 
   const getDropSide = (rawX: number) => {
@@ -264,6 +303,13 @@ function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [handleOpenFile]);
+
+  useEffect(() => {
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const message = `[perf] App mounted at ${Math.round(now - appStart)}ms`;
+    console.info(message);
+    void appendStartupLog(message);
+  }, []);
 
   const handleCheckUpdates = useCallback(async () => {
     if (updateBusy) {

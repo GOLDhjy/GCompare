@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "postbuild": "node scripts/copy-monaco.mjs dist",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
