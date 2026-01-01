@@ -1,10 +1,11 @@
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::sync::Mutex;
-use std::time::Instant;
+use std::sync::{Arc, Mutex};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{
     menu::{Menu, MenuItem, Submenu, HELP_SUBMENU_ID},
+    webview::PageLoadEvent,
     Emitter, Manager,
 };
 use tauri_plugin_log::{log, Builder as LogBuilder, RotationStrategy};
@@ -43,13 +44,17 @@ fn collect_startup_paths() -> Vec<String> {
 fn append_boot_log(message: &str) {
     let path = std::env::temp_dir().join("gcompare-boot.log");
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&path) {
-        let _ = writeln!(file, "{}", message);
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_millis())
+            .unwrap_or(0);
+        let _ = writeln!(file, "{ts} {message}");
     }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let start = Instant::now();
+    let start = Arc::new(Instant::now());
     append_boot_log("boot start");
 
     let log_plugin = LogBuilder::new()
@@ -57,6 +62,19 @@ pub fn run() {
         .build();
 
     let app = tauri::Builder::default()
+        .on_page_load({
+            let start = Arc::clone(&start);
+            move |_, payload| {
+                let elapsed = start.elapsed().as_millis();
+                let event = match payload.event() {
+                    PageLoadEvent::Started => "page load started",
+                    PageLoadEvent::Finished => "page load finished",
+                };
+                let url = payload.url();
+                append_boot_log(&format!("{event} at {elapsed}ms url={url}"));
+                log::info!("{event} {url}");
+            }
+        })
         .plugin(log_plugin)
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
@@ -98,7 +116,9 @@ pub fn run() {
             }
         })
         .manage(PendingOpenPaths::default())
-        .setup(move |app| {
+        .setup({
+            let start = Arc::clone(&start);
+            move |app| {
             log::info!("setup start");
             append_boot_log(&format!(
                 "setup start at {}ms",
@@ -116,6 +136,7 @@ pub fn run() {
                 start.elapsed().as_millis()
             ));
             Ok(())
+        }
         })
         .invoke_handler(tauri::generate_handler![greet, consume_open_paths])
         .build(tauri::generate_context!())
@@ -126,7 +147,9 @@ pub fn run() {
         start.elapsed().as_millis()
     ));
 
-    app.run(move |app_handle, event| {
+    app.run({
+        let start = Arc::clone(&start);
+        move |app_handle, event| {
         if let tauri::RunEvent::Ready = &event {
             append_boot_log(&format!(
                 "run ready at {}ms",
@@ -157,5 +180,6 @@ pub fn run() {
             let _ = app_handle;
             let _ = event;
         }
+    }
     });
 }
