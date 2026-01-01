@@ -112,6 +112,53 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-wrap: wrap;
+}
+
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-btn {
+  border: 1px solid var(--border);
+  background: #fffdf8;
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  box-shadow: 0 8px 18px -12px rgba(15, 107, 103, 0.5);
+}
+
+.status-bar {
+  display: flex;
+  gap: 16px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: #fbf6ed;
+  font-size: 12px;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+.status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-message {
+  color: var(--accent-strong);
+  font-weight: 600;
 }
 
 .toggle {
@@ -180,6 +227,11 @@ body {
   .controls {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .actions {
+    width: 100%;
+    flex-wrap: wrap;
   }
 
   .diff-panel {
