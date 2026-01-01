@@ -44,6 +44,12 @@
     "macOS": {
       "bundleName": "GCompare"
     },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    },
     "fileAssociations": [
       {
         "ext": [
