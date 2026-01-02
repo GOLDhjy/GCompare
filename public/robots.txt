@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://goldhjy.github.io/GCompare/sitemap.xml
