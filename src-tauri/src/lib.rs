@@ -7,7 +7,10 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, Submenu, HELP_SUBMENU_ID},
+    menu::{
+        CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu,
+        HELP_SUBMENU_ID,
+    },
     webview::PageLoadEvent,
     Emitter, Manager,
 };
@@ -374,6 +377,53 @@ pub fn run() {
         .menu(|app| {
             let menu = Menu::default(app)?;
 
+            let open_left = MenuItem::with_id(
+                app,
+                "open_left",
+                "Open Left File...",
+                true,
+                None::<&str>,
+            )?;
+            let open_right = MenuItem::with_id(
+                app,
+                "open_right",
+                "Open Right File...",
+                true,
+                None::<&str>,
+            )?;
+            let save_focused = MenuItem::with_id(
+                app,
+                "save_focused",
+                "Save Focused File",
+                true,
+                None::<&str>,
+            )?;
+            let file_separator = PredefinedMenuItem::separator(app)?;
+            let mut file_menu_found = false;
+            for item in menu.items()? {
+                if let MenuItemKind::Submenu(submenu) = item {
+                    if submenu.text().unwrap_or_default() == "File" {
+                        submenu.insert(&open_left, 0)?;
+                        submenu.insert(&open_right, 1)?;
+                        submenu.insert(&save_focused, 2)?;
+                        submenu.insert(&file_separator, 3)?;
+                        file_menu_found = true;
+                        break;
+                    }
+                }
+            }
+            if !file_menu_found {
+                let file_menu = Submenu::with_id(app, "file", "File", true)?;
+                file_menu.append(&open_left)?;
+                file_menu.append(&open_right)?;
+                file_menu.append(&save_focused)?;
+                file_menu.append(&file_separator)?;
+                file_menu.append(&PredefinedMenuItem::close_window(app, None)?)?;
+                #[cfg(not(target_os = "macos"))]
+                file_menu.append(&PredefinedMenuItem::quit(app, None)?)?;
+                menu.prepend(&file_menu)?;
+            }
+
             let theme_menu = Submenu::with_id_and_items(
                 app,
                 "theme",
@@ -462,6 +512,15 @@ pub fn run() {
                 }
                 "check_updates" => {
                     let _ = app.emit("gcompare://check-updates", ());
+                }
+                "open_left" => {
+                    let _ = app.emit("gcompare://open-left", ());
+                }
+                "open_right" => {
+                    let _ = app.emit("gcompare://open-right", ());
+                }
+                "save_focused" => {
+                    let _ = app.emit("gcompare://save-focused", ());
                 }
                 _ => {}
             }

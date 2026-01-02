@@ -53,6 +53,7 @@ type GitHistoryResult = {
   relativePath: string;
   entries: GitHistoryEntry[];
 };
+type EditorSide = "original" | "modified";
 const isVirtualPath = (path: string | null) =>
   Boolean(path && path.startsWith(gitVirtualPathPrefix));
 const formatCommitTime = (timestamp: number) =>
@@ -99,6 +100,7 @@ function App() {
   const [updateBusy, setUpdateBusy] = useState(false);
   const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
   const diffListenersRef = useRef<Array<{ dispose: () => void }>>([]);
+  const focusedSideRef = useRef<EditorSide | null>(null);
   const updateProgressRef = useRef<{ total?: number; done: number }>({
     total: undefined,
     done: 0,
@@ -177,6 +179,7 @@ function App() {
   useEffect(() => {
     return () => {
       diffEditorRef.current = null;
+      focusedSideRef.current = null;
       diffListenersRef.current.forEach((listener) => listener.dispose());
       diffListenersRef.current = [];
     };
@@ -191,6 +194,20 @@ function App() {
     if (!model) {
       return;
     }
+
+    const originalEditor = editor.getOriginalEditor();
+    const modifiedEditor = editor.getModifiedEditor();
+
+    diffListenersRef.current.push(
+      originalEditor.onDidFocusEditorText(() => {
+        focusedSideRef.current = "original";
+      }),
+    );
+    diffListenersRef.current.push(
+      modifiedEditor.onDidFocusEditorText(() => {
+        focusedSideRef.current = "modified";
+      }),
+    );
 
     const updateDiffChanges = () => {
       const changes = editor.getLineChanges() ?? [];
@@ -242,6 +259,43 @@ function App() {
     return logicalX < window.innerWidth / 2 ? "original" : "modified";
   };
 
+  const handleSaveFocused = useCallback(async () => {
+    const focusedSide = focusedSideRef.current;
+    if (!focusedSide) {
+      showStatus("Click inside a panel before saving.", 2500);
+      return;
+    }
+
+    const path = focusedSide === "original" ? originalPath : modifiedPath;
+    if (!path || isVirtualPath(path)) {
+      showStatus("Open a file on this side before saving.", 2500);
+      return;
+    }
+
+    const editor = diffEditorRef.current;
+    if (!editor) {
+      showStatus("Editor not ready.", 2000);
+      return;
+    }
+
+    const targetEditor =
+      focusedSide === "original"
+        ? editor.getOriginalEditor()
+        : editor.getModifiedEditor();
+    const contents = targetEditor.getValue();
+
+    try {
+      await writeTextFile(path, contents);
+      showStatus(
+        `Saved ${focusedSide === "original" ? "left" : "right"} file.`,
+        2000,
+      );
+    } catch (error) {
+      console.error(error);
+      showStatus("Failed to save file.", 2500);
+    }
+  }, [modifiedPath, originalPath, showStatus]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const isMod = event.metaKey || event.ctrlKey;
@@ -257,6 +311,9 @@ function App() {
         } else {
           void handleOpenFile("original");
         }
+      } else if (key === "s") {
+        event.preventDefault();
+        void handleSaveFocused();
       } else if (key === "1") {
         event.preventDefault();
         updateViewMode('side-by-side');
@@ -268,7 +325,7 @@ function App() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleOpenFile]);
+  }, [handleOpenFile, handleSaveFocused, updateViewMode]);
 
   useEffect(() => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -509,6 +566,9 @@ function App() {
     let unlistenDrag: (() => void) | null = null;
     let unlistenOpen: (() => void) | null = null;
     let unlistenMenu: (() => void) | null = null;
+    let unlistenOpenLeft: (() => void) | null = null;
+    let unlistenOpenRight: (() => void) | null = null;
+    let unlistenSaveFocused: (() => void) | null = null;
     let unlistenTheme: (() => void) | null = null;
 
     const setup = async () => {
@@ -541,6 +601,27 @@ function App() {
         void handleCheckUpdates();
       });
 
+      unlistenOpenLeft = await listen("gcompare://open-left", () => {
+        if (!active) {
+          return;
+        }
+        void handleOpenFile("original");
+      });
+
+      unlistenOpenRight = await listen("gcompare://open-right", () => {
+        if (!active) {
+          return;
+        }
+        void handleOpenFile("modified");
+      });
+
+      unlistenSaveFocused = await listen("gcompare://save-focused", () => {
+        if (!active) {
+          return;
+        }
+        void handleSaveFocused();
+      });
+
       unlistenTheme = await listen<string>("gcompare://set-theme", (event) => {
         if (!active) {
           return;
@@ -570,11 +651,27 @@ function App() {
       if (unlistenMenu) {
         unlistenMenu();
       }
+      if (unlistenOpenLeft) {
+        unlistenOpenLeft();
+      }
+      if (unlistenOpenRight) {
+        unlistenOpenRight();
+      }
+      if (unlistenSaveFocused) {
+        unlistenSaveFocused();
+      }
       if (unlistenTheme) {
         unlistenTheme();
       }
     };
-  }, [applyPaths, enqueueOpenPaths, handleCheckUpdates, updateTheme]);
+  }, [
+    applyPaths,
+    enqueueOpenPaths,
+    handleCheckUpdates,
+    handleOpenFile,
+    handleSaveFocused,
+    updateTheme,
+  ]);
 
   return (
     <main className="app">
@@ -783,7 +880,7 @@ function App() {
             {statusMessage ?? ""}
           </span>
           <span className="status-item hint">
-            Shortcuts: Ctrl/Cmd+O Left, Ctrl/Cmd+Shift+O Right, Ctrl/Cmd+1/2 Mode
+            Shortcuts: Ctrl/Cmd+O Left, Ctrl/Cmd+Shift+O Right, Ctrl/Cmd+S Save, Ctrl/Cmd+1/2 Mode
           </span>
         </div>
       </div>
