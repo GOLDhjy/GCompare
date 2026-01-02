@@ -322,6 +322,13 @@ function App() {
         }
       });
 
+      const shouldRestart = window.confirm(
+        "Update installed. Restart the app now?",
+      );
+      if (shouldRestart) {
+        await invoke("restart_app");
+        return;
+      }
       showStatus("Update installed. Please restart the app.", 5000);
     } catch (error) {
       console.error(error);

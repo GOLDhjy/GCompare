@@ -79,6 +79,11 @@ fn update_theme_menu(app: tauri::AppHandle, theme: String) {
 }
 
 #[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    tauri::process::restart(&app.env());
+}
+
+#[tauri::command]
 fn consume_open_paths(state: tauri::State<PendingOpenPaths>) -> Vec<String> {
     let mut pending = state.0.lock().expect("pending open paths lock");
     let paths = pending.clone();
@@ -487,6 +492,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             update_theme_menu,
+            restart_app,
             consume_open_paths,
             git_history,
             git_show_file
