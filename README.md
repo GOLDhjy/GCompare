@@ -19,7 +19,7 @@ GCompare 是一个基于 Tauri v2 的跨平台文本/文件差异对比工具，
 - 主题设置（系统 / 亮色 / 深色）
 - Git 历史面板：提交列表与单文件对比（基于 git CLI）
 
-![GCompare v0.1.0](./public/Images/v0.1.0.png)
+![GCompare v0.1.0](./public/Images/v0.2.0.png)
 
 ## 下载
 请前往 Release 页面下载：  
