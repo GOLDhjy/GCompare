@@ -1,3 +1,4 @@
+import './App.css';
 import './LandingPage.css';
 
 export default function LandingPage() {
