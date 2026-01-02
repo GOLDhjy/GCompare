@@ -98,6 +98,11 @@ body {
   box-shadow: 0 6px 14px -10px rgba(0, 0, 0, 0.35);
 }
 
+.action-btn.is-active {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
 .action-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -215,16 +220,24 @@ body {
   display: none;
 }
 
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px;
+  order: 2;
+}
+
 .diff-panel {
   flex: 1;
   min-height: 0;
-  margin: 10px 12px;
+  margin: 0;
   background: var(--panel-strong);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 4px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  order: 2;
 }
 
 .diff-panel > div {
@@ -233,10 +246,164 @@ body {
   border-radius: 8px;
 }
 
+.history-panel {
+  width: 0;
+  opacity: 0;
+  transform: translateX(-8px);
+  overflow: hidden;
+  transition: width 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+  flex: 0 0 auto;
+}
+
+.history-panel.is-open {
+  width: 280px;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.history-panel-inner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  min-height: 0;
+}
+
+.history-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.history-panel-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.history-subtitle {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.history-refresh {
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.history-refresh:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.history-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.history-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.history-control select {
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.history-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-item {
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: inherit;
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: inherit;
+}
+
+.history-item:hover:not(:disabled) {
+  border-color: var(--accent);
+  box-shadow: 0 6px 14px -10px rgba(0, 0, 0, 0.35);
+  transform: translateY(-1px);
+}
+
+.history-item.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 6px 14px -10px rgba(0, 0, 0, 0.35);
+}
+
+.history-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.history-item-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.history-item-meta,
+.history-item-note {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.history-empty {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 8px 4px;
+}
+
 
 @media (max-width: 900px) {
   .controls {
     max-width: 55%;
+  }
+
+  .history-panel.is-open {
+    width: 230px;
   }
 }
 
@@ -261,6 +428,15 @@ body {
 
   .action-label-short {
     display: inline;
+  }
+
+  .workspace {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .history-panel.is-open {
+    width: 200px;
   }
 }
 
@@ -318,6 +494,20 @@ body {
   background: var(--bg);
   border-color: var(--border);
   box-shadow: none;
+}
+
+:root[data-theme="dark"] .history-panel-inner {
+  background: var(--panel);
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .history-refresh,
+:root[data-theme="dark"] .history-control select,
+:root[data-theme="dark"] .history-item {
+  background: var(--panel-strong);
+  border-color: var(--border);
+  color: var(--ink);
 }
 
 :root[data-theme="dark"] .toggle-track {

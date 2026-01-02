@@ -39,6 +39,24 @@ const initialModifiedText = [
   "- Cross-platform",
   "- Git CLI support",
 ].join("\n");
+const gitVirtualPathPrefix = "git:";
+type GitHistoryEntry = {
+  hash: string;
+  timestamp: number;
+  author: string;
+  summary: string;
+  path: string;
+  deleted: boolean;
+};
+type GitHistoryResult = {
+  repoRoot: string;
+  relativePath: string;
+  entries: GitHistoryEntry[];
+};
+const isVirtualPath = (path: string | null) =>
+  Boolean(path && path.startsWith(gitVirtualPathPrefix));
+const formatCommitTime = (timestamp: number) =>
+  new Date(timestamp * 1000).toLocaleString();
 const appendStartupLog = async (message: string) => {
   const timestamp = new Date().toISOString();
   const line = `[${timestamp}] ${message}`;
@@ -87,12 +105,35 @@ function App() {
     applyPaths,
     enqueueOpenPaths,
     handleOpenFile,
+    setSideContent,
   } = useFileHandlers({
     initialOriginalText,
     initialModifiedText,
     largeFileThreshold,
     showStatus,
   });
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<GitHistoryEntry[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyRepoRoot, setHistoryRepoRoot] = useState<string | null>(null);
+  const [historyRelativePath, setHistoryRelativePath] = useState<string | null>(null);
+  const [historySourceSide, setHistorySourceSide] = useState<"original" | "modified">(
+    "original",
+  );
+  const [historySelectedHash, setHistorySelectedHash] = useState<string | null>(null);
+  const [historyLoadingHash, setHistoryLoadingHash] = useState<string | null>(null);
+
+  const originalIsFile = Boolean(originalPath && !isVirtualPath(originalPath));
+  const modifiedIsFile = Boolean(modifiedPath && !isVirtualPath(modifiedPath));
+  const historyTargetPath =
+    historySourceSide === "original"
+      ? originalIsFile
+        ? originalPath
+        : null
+      : modifiedIsFile
+        ? modifiedPath
+        : null;
 
   useMonacoRemeasure(diffEditorRef);
 
@@ -112,6 +153,14 @@ function App() {
       );
     }
   }, [settings.theme, systemTheme]);
+
+  useEffect(() => {
+    if (historySourceSide === "original" && !originalIsFile && modifiedIsFile) {
+      setHistorySourceSide("modified");
+    } else if (historySourceSide === "modified" && !modifiedIsFile && originalIsFile) {
+      setHistorySourceSide("original");
+    }
+  }, [historySourceSide, modifiedIsFile, originalIsFile]);
 
   useEffect(() => {
     return () => {
@@ -244,6 +293,114 @@ function App() {
     }
   }, [showStatus, updateBusy]);
 
+  const formatInvokeError = useCallback((error: unknown) => {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return String(error);
+  }, []);
+
+  const fetchHistory = useCallback(async () => {
+    if (!historyTargetPath) {
+      setHistoryEntries([]);
+      setHistoryRepoRoot(null);
+      setHistoryRelativePath(null);
+      setHistoryError("Open a file to view Git history.");
+      return;
+    }
+
+    setHistoryBusy(true);
+    setHistoryError(null);
+    try {
+      const result = await invoke<GitHistoryResult>("git_history", {
+        path: historyTargetPath,
+      });
+      setHistoryEntries(result.entries);
+      setHistoryRepoRoot(result.repoRoot);
+      setHistoryRelativePath(result.relativePath);
+      setHistorySelectedHash(null);
+    } catch (error) {
+      const message = formatInvokeError(error);
+      setHistoryEntries([]);
+      setHistoryRepoRoot(null);
+      setHistoryRelativePath(null);
+      setHistoryError(message);
+    } finally {
+      setHistoryBusy(false);
+    }
+  }, [formatInvokeError, historyTargetPath]);
+
+  const handleCompareCommit = useCallback(
+    async (entry: GitHistoryEntry) => {
+      if (entry.deleted) {
+        showStatus("This commit deleted the file.", 2500);
+        return;
+      }
+      if (!historyRepoRoot || !historyTargetPath) {
+        showStatus("Git history is not available yet.", 2500);
+        return;
+      }
+
+      setHistoryLoadingHash(entry.hash);
+      setHistorySelectedHash(entry.hash);
+      try {
+        const content = await invoke<string>("git_show_file", {
+          repoRoot: historyRepoRoot,
+          commit: entry.hash,
+          path: entry.path,
+        });
+        const shortHash = entry.hash.slice(0, 7);
+        const commitLabel = `${gitVirtualPathPrefix}${shortHash}:${entry.path}`;
+        const workingText =
+          historySourceSide === "original" ? originalText : modifiedText;
+        const workingPath = historyTargetPath;
+        const otherSide = historySourceSide === "original" ? "modified" : "original";
+        const otherSidePath = otherSide === "original" ? originalPath : modifiedPath;
+        const otherSideIsFile = otherSide === "original" ? originalIsFile : modifiedIsFile;
+        const overwroteOtherSide =
+          otherSideIsFile && otherSidePath && otherSidePath !== workingPath;
+
+        if (historySourceSide === "original") {
+          setSideContent("modified", workingText, workingPath);
+          setSideContent("original", content, commitLabel);
+          setHistorySourceSide("modified");
+        } else {
+          setSideContent("original", content, commitLabel);
+        }
+
+        showStatus(
+          `Comparing with ${shortHash}.${overwroteOtherSide ? " Replaced the other side." : ""}`,
+          2600,
+        );
+      } catch (error) {
+        console.error(error);
+        showStatus("Failed to load commit content.", 2500);
+      } finally {
+        setHistoryLoadingHash(null);
+      }
+    },
+    [
+      historyRepoRoot,
+      historySourceSide,
+      historyTargetPath,
+      modifiedIsFile,
+      modifiedPath,
+      modifiedText,
+      originalIsFile,
+      originalPath,
+      originalText,
+      setSideContent,
+      showStatus,
+    ],
+  );
+
+  useEffect(() => {
+    if (!historyOpen) {
+      return;
+    }
+    void fetchHistory();
+  }, [fetchHistory, historyOpen]);
+
   useEffect(() => {
     let active = true;
     let unlistenDrag: (() => void) | null = null;
@@ -337,6 +494,15 @@ function App() {
               <span className="action-label-full">Open Right File</span>
               <span className="action-label-short">Right File</span>
             </button>
+            <button
+              className={`action-btn${historyOpen ? " is-active" : ""}`}
+              type="button"
+              onClick={() => setHistoryOpen((prev) => !prev)}
+              aria-pressed={historyOpen}
+            >
+              <span className="action-label-full">History</span>
+              <span className="action-label-short">History</span>
+            </button>
           </div>
           <div className="toggle">
             <button
@@ -358,6 +524,115 @@ function App() {
             </button>
           </div>
         </header>
+        <div className="workspace">
+          <aside
+            className={`history-panel${historyOpen ? " is-open" : ""}`}
+            aria-label="Git history"
+            aria-hidden={!historyOpen}
+          >
+            {historyOpen ? (
+              <div className="history-panel-inner">
+                <div className="history-panel-header">
+                  <div className="history-panel-title">
+                    <span className="history-title">History</span>
+                    <span className="history-subtitle">
+                      {historyRelativePath
+                        ? `File: ${historyRelativePath}`
+                        : "Git history"}
+                    </span>
+                  </div>
+                  <button
+                    className="history-refresh"
+                    type="button"
+                    onClick={() => void fetchHistory()}
+                    disabled={historyBusy}
+                  >
+                    {historyBusy ? "Loading..." : "Refresh"}
+                  </button>
+                </div>
+                <div className="history-controls">
+                  <label className="history-control">
+                    <span>Source</span>
+                    <select
+                      value={historySourceSide}
+                      onChange={(event) =>
+                        setHistorySourceSide(
+                          event.target.value as "original" | "modified",
+                        )
+                      }
+                      disabled={!(originalIsFile && modifiedIsFile)}
+                    >
+                      <option value="original" disabled={!originalIsFile}>
+                        Left file
+                      </option>
+                      <option value="modified" disabled={!modifiedIsFile}>
+                        Right file
+                      </option>
+                    </select>
+                  </label>
+                </div>
+                <div className="history-list">
+                  {historyBusy ? (
+                    <div className="history-empty">Loading history...</div>
+                  ) : historyError ? (
+                    <div className="history-empty">{historyError}</div>
+                  ) : historyEntries.length === 0 ? (
+                    <div className="history-empty">No commits yet.</div>
+                  ) : (
+                    historyEntries.map((entry) => {
+                      const shortHash = entry.hash.slice(0, 7);
+                      const isActive = historySelectedHash === entry.hash;
+                      const isLoading = historyLoadingHash === entry.hash;
+                      return (
+                        <button
+                          key={entry.hash}
+                          type="button"
+                          className={`history-item${isActive ? " is-active" : ""}`}
+                          onClick={() => void handleCompareCommit(entry)}
+                          disabled={entry.deleted || isLoading}
+                        >
+                          <span className="history-item-title">
+                            {entry.summary || "(no message)"}
+                          </span>
+                          <span className="history-item-meta">
+                            {shortHash} · {entry.author} · {formatCommitTime(entry.timestamp)}
+                          </span>
+                          {entry.deleted ? (
+                            <span className="history-item-note">Deleted in this commit</span>
+                          ) : null}
+                          {isLoading ? (
+                            <span className="history-item-note">Loading content...</span>
+                          ) : null}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </aside>
+          <section className="diff-panel" aria-label="Diff editor">
+            <DiffEditor
+              original={originalText}
+              modified={modifiedText}
+              language="markdown"
+              theme={getMonacoTheme(effectiveTheme)}
+              onMount={handleDiffMount}
+              options={{
+                renderSideBySide: sideBySide,
+                useInlineViewWhenSpaceIsLimited: false,
+                readOnly: false,
+                originalEditable: true,
+                minimap: { enabled: false },
+                renderOverviewRuler: false,
+                lineNumbers: "on",
+                fontFamily: editorFontFamily,
+                fontSize: editorFontSize,
+                wordWrap: "on",
+              }}
+            />
+          </section>
+        </div>
         <div className="status-bar" role="status" aria-live="polite">
           <span className="status-item">
             Left: {originalPath ? originalPath : "Untitled"}
@@ -372,28 +647,6 @@ function App() {
             Shortcuts: Ctrl/Cmd+O Left, Ctrl/Cmd+Shift+O Right, Ctrl/Cmd+1/2 Mode
           </span>
         </div>
-
-        <section className="diff-panel" aria-label="Diff editor">
-          <DiffEditor
-            original={originalText}
-            modified={modifiedText}
-            language="markdown"
-            theme={getMonacoTheme(effectiveTheme)}
-            onMount={handleDiffMount}
-            options={{
-              renderSideBySide: sideBySide,
-              useInlineViewWhenSpaceIsLimited: false,
-              readOnly: false,
-              originalEditable: true,
-              minimap: { enabled: false },
-              renderOverviewRuler: false,
-              lineNumbers: "on",
-              fontFamily: editorFontFamily,
-              fontSize: editorFontSize,
-              wordWrap: "on",
-            }}
-          />
-        </section>
       </div>
     </main>
   );

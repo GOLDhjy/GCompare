@@ -14,7 +14,7 @@ export function useSettings() {
     getSettings()
       .then(async (loadedSettings) => {
         setSettings(loadedSettings);
-        // 同步菜单状态
+        // 同步初始菜单状态
         try {
           await invoke('update_theme_menu', { theme: loadedSettings.theme });
         } catch (error) {
@@ -31,13 +31,7 @@ export function useSettings() {
     try {
       await updateSettingsStore({ theme });
       setSettings((prev) => ({ ...prev, theme }));
-
-      // 同步更新菜单状态
-      try {
-        await invoke('update_theme_menu', { theme });
-      } catch (error) {
-        console.error('Failed to update menu state:', error);
-      }
+      // 注意：菜单状态同步现在由 Rust 端的 on_menu_event 处理
     } catch (error) {
       console.error('Failed to update theme:', error);
       throw error;

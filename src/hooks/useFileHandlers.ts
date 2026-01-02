@@ -224,6 +224,17 @@ export const useFileHandlers = ({
     [formatBytes, largeFileThreshold, loadFileToSide, reserveSide, showStatus],
   );
 
+  const setSideContent = useCallback((side: Side, contents: string, path: string | null) => {
+    if (side === "original") {
+      setOriginalText(contents);
+      setOriginalPath(path);
+    } else {
+      setModifiedText(contents);
+      setModifiedPath(path);
+    }
+    pathStateRef.current[side] = Boolean(path);
+  }, []);
+
   return {
     originalText,
     modifiedText,
@@ -232,5 +243,6 @@ export const useFileHandlers = ({
     applyPaths,
     enqueueOpenPaths,
     handleOpenFile,
+    setSideContent,
   };
 };
