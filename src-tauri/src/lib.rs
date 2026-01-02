@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{
-    menu::{Menu, MenuItem, Submenu, HELP_SUBMENU_ID},
+    menu::{Menu, MenuItem, Submenu, CheckMenuItem, HELP_SUBMENU_ID},
     webview::PageLoadEvent,
     Emitter, Manager,
 };
@@ -19,6 +19,36 @@ fn greet(name: &str) -> String {
 
 #[derive(Default)]
 struct PendingOpenPaths(Mutex<Vec<String>>);
+
+#[tauri::command]
+fn update_theme_menu(app: tauri::AppHandle, theme: String) {
+    if let Some(window) = app.get_webview_window("main") {
+        if let Some(menu) = window.menu() {
+            // 取消所有主题菜单项的选中状态
+            for id in ["theme_system", "theme_light", "theme_dark"] {
+                if let Some(item) = menu.get(id) {
+                    if let Some(check_item) = item.as_check_menuitem() {
+                        let _ = check_item.set_checked(false);
+                    }
+                }
+            }
+
+            // 选中当前主题菜单项
+            let menu_id = match theme.as_str() {
+                "system" => "theme_system",
+                "light" => "theme_light",
+                "dark" => "theme_dark",
+                _ => "theme_system",
+            };
+
+            if let Some(item) = menu.get(menu_id) {
+                if let Some(check_item) = item.as_check_menuitem() {
+                    let _ = check_item.set_checked(true);
+                }
+            }
+        }
+    }
+}
 
 #[tauri::command]
 fn consume_open_paths(state: tauri::State<PendingOpenPaths>) -> Vec<String> {
@@ -81,6 +111,8 @@ pub fn run() {
         .rotation_strategy(RotationStrategy::KeepAll)
         .build();
 
+    let store_plugin = tauri_plugin_store::Builder::new().build();
+
     let app = tauri::Builder::default()
         .on_page_load({
             let start = Arc::clone(&start);
@@ -96,6 +128,7 @@ pub fn run() {
             }
         })
         .plugin(log_plugin)
+        .plugin(store_plugin)
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -116,6 +149,42 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .menu(|app| {
             let menu = Menu::default(app)?;
+
+            // 创建主题子菜单
+            let theme_menu = Submenu::with_id_and_items(
+                app,
+                "theme",
+                "主题",
+                true,
+                &[
+                    &CheckMenuItem::with_id(
+                        app,
+                        "theme_system",
+                        "跟随系统",
+                        true,
+                        true,  // 默认选中
+                        None::<&str>
+                    )?,
+                    &CheckMenuItem::with_id(
+                        app,
+                        "theme_light",
+                        "亮色",
+                        true,
+                        false,
+                        None::<&str>
+                    )?,
+                    &CheckMenuItem::with_id(
+                        app,
+                        "theme_dark",
+                        "深色",
+                        true,
+                        false,
+                        None::<&str>
+                    )?,
+                ]
+            )?;
+            menu.append(&theme_menu)?;
+
             if let Some(tauri::menu::MenuItemKind::Submenu(help_menu)) =
                 menu.get(HELP_SUBMENU_ID)
             {
@@ -145,8 +214,20 @@ pub fn run() {
             Ok(menu)
         })
         .on_menu_event(|app, event| {
-            if event.id() == "check_updates" {
-                let _ = app.emit("gcompare://check-updates", ());
+            match event.id().as_ref() {
+                "theme_system" => {
+                    let _ = app.emit("gcompare://set-theme", "system");
+                }
+                "theme_light" => {
+                    let _ = app.emit("gcompare://set-theme", "light");
+                }
+                "theme_dark" => {
+                    let _ = app.emit("gcompare://set-theme", "dark");
+                }
+                "check_updates" => {
+                    let _ = app.emit("gcompare://check-updates", ());
+                }
+                _ => {}
             }
         })
         .manage(PendingOpenPaths::default())
@@ -172,7 +253,7 @@ pub fn run() {
             Ok(())
         }
         })
-        .invoke_handler(tauri::generate_handler![greet, consume_open_paths])
+        .invoke_handler(tauri::generate_handler![greet, update_theme_menu, consume_open_paths])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
 

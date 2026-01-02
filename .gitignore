@@ -27,3 +27,4 @@ dist-ssr
 src-tauri/updater.key
 .claude/settings.local.json
 CLAUDE.md
+AGENTS.md

@@ -9,6 +9,9 @@ import { check, type DownloadEvent } from "@tauri-apps/plugin-updater";
 import { useFileHandlers } from "./hooks/useFileHandlers";
 import { useMonacoRemeasure } from "./hooks/useMonacoRemeasure";
 import { useStatusMessage } from "./hooks/useStatusMessage";
+import { useSettings } from "./hooks/useSettings";
+import { useSystemTheme } from "./hooks/useSystemTheme";
+import { getMonacoTheme } from "./utils/monacoTheme";
 import "./App.css";
 
 const appStart = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -67,7 +70,8 @@ if (import.meta.env.PROD && typeof window !== "undefined") {
 }
 
 function App() {
-  const [sideBySide, setSideBySide] = useState(true);
+  const { settings, updateTheme, updateViewMode } = useSettings();
+  const systemTheme = useSystemTheme();
   const [updateBusy, setUpdateBusy] = useState(false);
   const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
   const updateProgressRef = useRef<{ total?: number; done: number }>({
@@ -91,6 +95,23 @@ function App() {
   });
 
   useMonacoRemeasure(diffEditorRef);
+
+  // 计算实际主题
+  const effectiveTheme = settings.theme === 'system'
+    ? systemTheme
+    : settings.theme;
+
+  const sideBySide = settings.viewMode === 'side-by-side';
+
+  // 应用主题到 DOM
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute(
+        'data-theme',
+        settings.theme === 'system' ? systemTheme : settings.theme
+      );
+    }
+  }, [settings.theme, systemTheme]);
 
   useEffect(() => {
     return () => {
@@ -151,10 +172,10 @@ function App() {
         }
       } else if (key === "1") {
         event.preventDefault();
-        setSideBySide(true);
+        updateViewMode('side-by-side');
       } else if (key === "2") {
         event.preventDefault();
-        setSideBySide(false);
+        updateViewMode('inline');
       }
     };
 
@@ -228,6 +249,7 @@ function App() {
     let unlistenDrag: (() => void) | null = null;
     let unlistenOpen: (() => void) | null = null;
     let unlistenMenu: (() => void) | null = null;
+    let unlistenTheme: (() => void) | null = null;
 
     const setup = async () => {
       unlistenDrag = await getCurrentWindow().onDragDropEvent((event) => {
@@ -259,6 +281,16 @@ function App() {
         void handleCheckUpdates();
       });
 
+      unlistenTheme = await listen<string>("gcompare://set-theme", (event) => {
+        if (!active) {
+          return;
+        }
+        const theme = event.payload;
+        if (theme === 'system' || theme === 'light' || theme === 'dark') {
+          void updateTheme(theme);
+        }
+      });
+
       const initial = await invoke<string[]>("consume_open_paths");
       if (active && Array.isArray(initial) && initial.length > 0) {
         enqueueOpenPaths(initial);
@@ -278,8 +310,11 @@ function App() {
       if (unlistenMenu) {
         unlistenMenu();
       }
+      if (unlistenTheme) {
+        unlistenTheme();
+      }
     };
-  }, [applyPaths, enqueueOpenPaths, handleCheckUpdates]);
+  }, [applyPaths, enqueueOpenPaths, handleCheckUpdates, updateTheme]);
 
   return (
     <main className="app">
@@ -306,7 +341,10 @@ function App() {
           <div className="toggle">
             <button
               className="toggle-switch"
-              onClick={() => setSideBySide((prev) => !prev)}
+              onClick={() => {
+                const newMode = sideBySide ? 'inline' : 'side-by-side';
+                updateViewMode(newMode);
+              }}
               type="button"
               aria-pressed={!sideBySide}
             >
@@ -340,7 +378,7 @@ function App() {
             original={originalText}
             modified={modifiedText}
             language="markdown"
-            theme="vs"
+            theme={getMonacoTheme(effectiveTheme)}
             onMount={handleDiffMount}
             options={{
               renderSideBySide: sideBySide,
