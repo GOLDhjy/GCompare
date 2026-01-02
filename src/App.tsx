@@ -57,6 +57,12 @@ const isVirtualPath = (path: string | null) =>
   Boolean(path && path.startsWith(gitVirtualPathPrefix));
 const formatCommitTime = (timestamp: number) =>
   new Date(timestamp * 1000).toLocaleString();
+type LineChange = {
+  originalStartLineNumber: number;
+  originalEndLineNumber: number;
+  modifiedStartLineNumber: number;
+  modifiedEndLineNumber: number;
+};
 const appendStartupLog = async (message: string) => {
   const timestamp = new Date().toISOString();
   const line = `[${timestamp}] ${message}`;
@@ -92,6 +98,7 @@ function App() {
   const systemTheme = useSystemTheme();
   const [updateBusy, setUpdateBusy] = useState(false);
   const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
+  const diffListenersRef = useRef<Array<{ dispose: () => void }>>([]);
   const updateProgressRef = useRef<{ total?: number; done: number }>({
     total: undefined,
     done: 0,
@@ -113,6 +120,7 @@ function App() {
     showStatus,
   });
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyPinned, setHistoryPinned] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<GitHistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -124,6 +132,8 @@ function App() {
   const [historySelectedHash, setHistorySelectedHash] = useState<string | null>(null);
   const [historyLoadingHash, setHistoryLoadingHash] = useState<string | null>(null);
   const lastHistoryPathRef = useRef<string | null>(null);
+  const [diffChanges, setDiffChanges] = useState<LineChange[]>([]);
+  const [diffIndex, setDiffIndex] = useState(0);
 
   const originalIsFile = Boolean(originalPath && !isVirtualPath(originalPath));
   const modifiedIsFile = Boolean(modifiedPath && !isVirtualPath(modifiedPath));
@@ -135,6 +145,7 @@ function App() {
       : modifiedIsFile
         ? modifiedPath
         : null;
+  const historyVisible = historyPinned || historyOpen;
 
   useMonacoRemeasure(diffEditorRef);
 
@@ -166,16 +177,42 @@ function App() {
   useEffect(() => {
     return () => {
       diffEditorRef.current = null;
+      diffListenersRef.current.forEach((listener) => listener.dispose());
+      diffListenersRef.current = [];
     };
   }, []);
 
   const handleDiffMount = (editor: MonacoDiffEditor) => {
     diffEditorRef.current = editor;
+    diffListenersRef.current.forEach((listener) => listener.dispose());
+    diffListenersRef.current = [];
 
     const model = editor.getModel();
     if (!model) {
       return;
     }
+
+    const updateDiffChanges = () => {
+      const changes = editor.getLineChanges() ?? [];
+      setDiffChanges(
+        changes.map((change) => ({
+          originalStartLineNumber: change.originalStartLineNumber,
+          originalEndLineNumber: change.originalEndLineNumber,
+          modifiedStartLineNumber: change.modifiedStartLineNumber,
+          modifiedEndLineNumber: change.modifiedEndLineNumber,
+        })),
+      );
+      setDiffIndex((prev) => {
+        if (changes.length === 0) {
+          return 0;
+        }
+        return Math.min(prev, changes.length - 1);
+      });
+    };
+
+    updateDiffChanges();
+    diffListenersRef.current.push(editor.onDidUpdateDiff(updateDiffChanges));
+    diffListenersRef.current.push(editor.onDidChangeModel(updateDiffChanges));
 
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
     const message = `[perf] DiffEditor mounted at ${Math.round(now - appStart)}ms`;
@@ -407,12 +444,58 @@ function App() {
     ],
   );
 
+  const handleNavigateDiff = useCallback(
+    (direction: "next" | "prev") => {
+      if (!diffEditorRef.current) {
+        return;
+      }
+      if (diffChanges.length === 0) {
+        showStatus("No differences found.", 2000);
+        return;
+      }
+
+      const nextIndex =
+        direction === "next"
+          ? Math.min(diffIndex + 1, diffChanges.length - 1)
+          : Math.max(diffIndex - 1, 0);
+      const change = diffChanges[nextIndex];
+      const pickLine = (start: number, end: number) => {
+        if (start > 0) {
+          return start;
+        }
+        if (end > 0) {
+          return end;
+        }
+        return 1;
+      };
+      const modifiedLine = pickLine(
+        change.modifiedStartLineNumber,
+        change.modifiedEndLineNumber,
+      );
+      const originalLine = pickLine(
+        change.originalStartLineNumber,
+        change.originalEndLineNumber,
+      );
+      const useModified = change.modifiedStartLineNumber > 0 || change.modifiedEndLineNumber > 0;
+      const targetEditor = useModified
+        ? diffEditorRef.current.getModifiedEditor()
+        : diffEditorRef.current.getOriginalEditor();
+      const targetLine = useModified ? modifiedLine : originalLine;
+
+      targetEditor.revealLineInCenter(targetLine);
+      targetEditor.setPosition({ lineNumber: targetLine, column: 1 });
+      targetEditor.focus();
+      setDiffIndex(nextIndex);
+    },
+    [diffChanges, diffIndex, showStatus],
+  );
+
   useEffect(() => {
-    if (!historyOpen) {
+    if (!historyVisible) {
       return;
     }
     void fetchHistory();
-  }, [fetchHistory, historyOpen]);
+  }, [fetchHistory, historyVisible]);
 
   useEffect(() => {
     let active = true;
@@ -508,6 +591,27 @@ function App() {
               <span className="action-label-short">Right File</span>
             </button>
           </div>
+          <div className="diff-nav diff-nav-bar">
+            Diffs: {diffChanges.length === 0 ? "0" : `${diffIndex + 1}/${diffChanges.length}`}
+            <button
+              className="diff-nav-btn"
+              type="button"
+              onClick={() => handleNavigateDiff("prev")}
+              disabled={diffChanges.length === 0}
+              aria-label="Previous difference"
+            >
+              ↑
+            </button>
+            <button
+              className="diff-nav-btn"
+              type="button"
+              onClick={() => handleNavigateDiff("next")}
+              disabled={diffChanges.length === 0}
+              aria-label="Next difference"
+            >
+              ↓
+            </button>
+          </div>
           <div className="toggle">
             <button
               className="toggle-switch"
@@ -530,9 +634,13 @@ function App() {
         </header>
         <div className="workspace">
           <div
-            className={`history-shell${historyOpen ? " is-open" : ""}`}
+            className={`history-shell${historyVisible ? " is-open" : ""}${historyPinned ? " is-pinned" : ""}`}
             onMouseEnter={() => setHistoryOpen(true)}
-            onMouseLeave={() => setHistoryOpen(false)}
+            onMouseLeave={() => {
+              if (!historyPinned) {
+                setHistoryOpen(false);
+              }
+            }}
           >
             <div className="history-handle" aria-hidden="true">
               History
@@ -540,9 +648,9 @@ function App() {
             <aside
               className="history-panel"
               aria-label="Git history"
-              aria-hidden={!historyOpen}
+              aria-hidden={!historyVisible}
             >
-              {historyOpen ? (
+              {historyVisible ? (
                 <div className="history-panel-inner">
                   <div className="history-panel-header">
                     <div className="history-panel-title">
@@ -553,14 +661,25 @@ function App() {
                           : "Git history"}
                       </span>
                     </div>
-                    <button
-                      className="history-refresh"
-                      type="button"
-                      onClick={() => void fetchHistory(true)}
-                      disabled={historyBusy}
-                    >
-                      {historyBusy ? "Loading..." : "Refresh"}
-                    </button>
+                    <div className="history-panel-actions">
+                      <button
+                        className="history-pin"
+                        type="button"
+                        onClick={() => setHistoryPinned((prev) => !prev)}
+                        aria-pressed={historyPinned}
+                        title={historyPinned ? "Unpin history panel" : "Pin history panel"}
+                      >
+                        {historyPinned ? "Pinned" : "Pin"}
+                      </button>
+                      <button
+                        className="history-refresh"
+                        type="button"
+                        onClick={() => void fetchHistory(true)}
+                        disabled={historyBusy}
+                      >
+                        {historyBusy ? "Loading..." : "Refresh"}
+                      </button>
+                    </div>
                   </div>
                   <div className="history-controls">
                     <label className="history-control">

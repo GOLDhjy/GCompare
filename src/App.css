@@ -63,6 +63,7 @@ body {
   background: #f1f1f1;
   border-bottom: 1px solid var(--border);
   order: 1;
+  position: relative;
 }
 
 .actions {
@@ -136,6 +137,41 @@ body {
   margin-left: auto;
   color: var(--muted);
   font-style: italic;
+}
+
+.diff-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.diff-nav-bar {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  box-shadow: var(--shadow);
+}
+
+.diff-nav-btn {
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.diff-nav-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .toggle {
@@ -255,9 +291,11 @@ body {
 
 .history-handle {
   width: 18px;
+  height: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
   background: var(--panel-strong);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -273,6 +311,12 @@ body {
 .history-shell:hover .history-handle {
   border-color: var(--accent);
   color: var(--accent-strong);
+}
+
+.history-shell.is-pinned .history-handle {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  box-shadow: 0 0 0 1px rgba(0, 121, 107, 0.12);
 }
 
 .history-panel {
@@ -308,12 +352,15 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
 }
 
 .history-panel-title {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .history-title {
@@ -324,8 +371,17 @@ body {
 .history-subtitle {
   font-size: 11px;
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
+.history-panel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.history-pin,
 .history-refresh {
   border: 1px solid var(--border);
   background: #ffffff;
@@ -335,6 +391,12 @@ body {
   font-size: 11px;
   cursor: pointer;
   font-family: inherit;
+}
+
+.history-pin[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: #eef7f5;
 }
 
 .history-refresh:disabled {
@@ -501,10 +563,17 @@ body {
 }
 
 :root[data-theme="dark"] .action-btn,
-:root[data-theme="dark"] .toggle-switch {
+:root[data-theme="dark"] .toggle-switch,
+:root[data-theme="dark"] .diff-nav-btn {
   background: var(--panel-strong);
   border-color: var(--border);
   color: var(--ink);
+}
+
+:root[data-theme="dark"] .diff-nav-bar {
+  background: var(--panel);
+  border-color: var(--border);
+  box-shadow: none;
 }
 
 :root[data-theme="dark"] .action-btn:hover,
@@ -542,12 +611,19 @@ body {
   box-shadow: none;
 }
 
+:root[data-theme="dark"] .history-pin,
 :root[data-theme="dark"] .history-refresh,
 :root[data-theme="dark"] .history-control select,
 :root[data-theme="dark"] .history-item {
   background: var(--panel-strong);
   border-color: var(--border);
   color: var(--ink);
+}
+
+:root[data-theme="dark"] .history-pin[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: rgba(77, 182, 172, 0.16);
 }
 
 :root[data-theme="dark"] .toggle-track {
