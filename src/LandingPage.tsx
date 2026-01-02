@@ -8,9 +8,13 @@ export default function LandingPage() {
   return (
     <div className="landing-page">
       <header className="landing-header">
-        <a href="#" className="landing-logo">GCompare</a>
+        <a href="#" className="landing-logo" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img src={`${import.meta.env.BASE_URL}icon256.png`} alt="GCompare Logo" style={{ width: '32px', height: '32px' }} />
+          GCompare
+        </a>
         <nav className="landing-nav">
           <a href="#features">Features</a>
+          <a href={downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
           <a href={repoUrl} target="_blank" rel="noopener noreferrer">GitHub</a>
         </nav>
       </header>
@@ -22,12 +26,12 @@ export default function LandingPage() {
             for Developers
           </h1>
           <p className="hero-subtitle">
-            A fast, clean, and cross-platform diff tool built with Tauri and React.
-            Compare text, files, and git history with ease.
+            A <span className="highlight">fast</span>, <span className="highlight">clean</span>, and <span className="highlight">cross-platform</span> diff tool built with Tauri and React.
+            Compare <span className="highlight">text</span>, <span className="highlight">files</span>, and <span className="highlight">git history</span> with ease.
           </p>
           <div className="cta-group">
             <a href={downloadUrl} className="btn btn-primary">
-              Download for macOS
+              Download Latest Release
             </a>
             <a href={repoUrl} className="btn btn-secondary" target="_blank" rel="noopener noreferrer">
               View Source
@@ -39,7 +43,7 @@ export default function LandingPage() {
           <div className="preview-placeholder">
             {/* You can replace this with an actual screenshot <img> tag */}
             <img 
-              src="/Images/v0.1.0.png" 
+              src={`${import.meta.env.BASE_URL}Images/v0.2.0.png`}
               alt="GCompare Screenshot" 
               style={{width: '100%', height: 'auto', borderRadius: '8px', display: 'block'}}
               onError={(e) => {

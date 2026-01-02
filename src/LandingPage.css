@@ -57,6 +57,11 @@
   line-height: 1.6;
 }
 
+.hero-subtitle .highlight {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .cta-group {
   display: flex;
   gap: 1rem;
