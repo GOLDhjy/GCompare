@@ -7,7 +7,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem, Submenu, HELP_SUBMENU_ID},
+    menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, Submenu, HELP_SUBMENU_ID},
     webview::PageLoadEvent,
     Emitter, Manager,
 };
@@ -48,24 +48,31 @@ fn update_theme_menu(app: tauri::AppHandle, theme: String) {
         .or_else(|| app.get_webview_window("main").and_then(|window| window.menu()));
 
     if let Some(menu) = menu {
-        for id in ["theme_system", "theme_light", "theme_dark"] {
-            if let Some(item) = menu.get(id) {
-                if let Some(check_item) = item.as_check_menuitem() {
-                    let _ = check_item.set_checked(false);
-                }
-            }
-        }
-
-        let menu_id = match theme.as_str() {
-            "system" => "theme_system",
-            "light" => "theme_light",
-            "dark" => "theme_dark",
-            _ => "theme_system",
+        let theme_submenu = match menu.get("theme") {
+            Some(MenuItemKind::Submenu(submenu)) => Some(submenu),
+            _ => None,
         };
 
-        if let Some(item) = menu.get(menu_id) {
-            if let Some(check_item) = item.as_check_menuitem() {
-                let _ = check_item.set_checked(true);
+        if let Some(theme_submenu) = theme_submenu {
+            for id in ["theme_system", "theme_light", "theme_dark"] {
+                if let Some(item) = theme_submenu.get(id) {
+                    if let Some(check_item) = item.as_check_menuitem() {
+                        let _ = check_item.set_checked(false);
+                    }
+                }
+            }
+
+            let menu_id = match theme.as_str() {
+                "system" => "theme_system",
+                "light" => "theme_light",
+                "dark" => "theme_dark",
+                _ => "theme_system",
+            };
+
+            if let Some(item) = theme_submenu.get(menu_id) {
+                if let Some(check_item) = item.as_check_menuitem() {
+                    let _ = check_item.set_checked(true);
+                }
             }
         }
     }
@@ -164,6 +171,9 @@ fn to_git_path(path: &Path) -> String {
 #[tauri::command]
 fn git_history(path: String) -> Result<GitHistoryResult, String> {
     let file_path = PathBuf::from(path);
+    if !file_path.is_file() {
+        return Err("Path is not a file.".to_string());
+    }
     let parent = file_path
         .parent()
         .ok_or_else(|| "Invalid file path.".to_string())?;
@@ -208,9 +218,34 @@ fn git_history(path: String) -> Result<GitHistoryResult, String> {
         &repo_root,
     )?;
 
+    struct PendingCommit {
+        hash: String,
+        timestamp: i64,
+        author: String,
+        summary: String,
+        path: String,
+        deleted: bool,
+        touched: bool,
+    }
+
     let mut entries = Vec::new();
     let mut current_path = relative_path.clone();
-    let mut last_entry_index: Option<usize> = None;
+    let mut pending: Option<PendingCommit> = None;
+
+    let mut flush_pending = |pending: &mut Option<PendingCommit>| {
+        if let Some(entry) = pending.take() {
+            if entry.touched {
+                entries.push(GitHistoryEntry {
+                    hash: entry.hash,
+                    timestamp: entry.timestamp,
+                    author: entry.author,
+                    summary: entry.summary,
+                    path: entry.path,
+                    deleted: entry.deleted,
+                });
+            }
+        }
+    };
 
     for line in log_output.lines() {
         if line.trim().is_empty() {
@@ -218,37 +253,52 @@ fn git_history(path: String) -> Result<GitHistoryResult, String> {
         }
 
         if let Some((hash, timestamp, author, summary)) = parse_commit_line(line) {
-            entries.push(GitHistoryEntry {
+            flush_pending(&mut pending);
+            pending = Some(PendingCommit {
                 hash,
                 timestamp,
                 author,
                 summary,
                 path: current_path.clone(),
                 deleted: false,
+                touched: false,
             });
-            last_entry_index = Some(entries.len() - 1);
             continue;
         }
 
         let mut parts = line.split('\t');
         let status = parts.next().unwrap_or("");
+        if status.is_empty() {
+            continue;
+        }
 
-        if let Some(index) = last_entry_index {
-            if status.starts_with('D') {
-                if let Some(entry) = entries.get_mut(index) {
+        let Some(entry) = pending.as_mut() else {
+            continue;
+        };
+
+        if status.starts_with('R') || status.starts_with('C') {
+            let old_path = parts.next().unwrap_or("");
+            let new_path = parts.next().unwrap_or("");
+            if !old_path.is_empty() && !new_path.is_empty() {
+                if new_path == current_path || old_path == current_path {
+                    entry.touched = true;
+                }
+                if status.starts_with('R') && new_path == current_path {
+                    current_path = old_path.to_string();
+                }
+            }
+        } else {
+            let path = parts.next().unwrap_or("");
+            if path == current_path {
+                entry.touched = true;
+                if status.starts_with('D') {
                     entry.deleted = true;
                 }
             }
         }
-
-        if status.starts_with('R') {
-            let old_path = parts.next().unwrap_or("").to_string();
-            let new_path = parts.next().unwrap_or("").to_string();
-            if !old_path.is_empty() && !new_path.is_empty() && new_path == current_path {
-                current_path = old_path;
-            }
-        }
     }
+
+    flush_pending(&mut pending);
 
     Ok(GitHistoryResult {
         repo_root: repo_root.to_string_lossy().to_string(),

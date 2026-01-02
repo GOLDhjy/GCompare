@@ -123,6 +123,7 @@ function App() {
   );
   const [historySelectedHash, setHistorySelectedHash] = useState<string | null>(null);
   const [historyLoadingHash, setHistoryLoadingHash] = useState<string | null>(null);
+  const lastHistoryPathRef = useRef<string | null>(null);
 
   const originalIsFile = Boolean(originalPath && !isVirtualPath(originalPath));
   const modifiedIsFile = Boolean(modifiedPath && !isVirtualPath(modifiedPath));
@@ -300,12 +301,22 @@ function App() {
     return String(error);
   }, []);
 
-  const fetchHistory = useCallback(async () => {
+  const fetchHistory = useCallback(async (force = false) => {
     if (!historyTargetPath) {
       setHistoryEntries([]);
       setHistoryRepoRoot(null);
       setHistoryRelativePath(null);
       setHistoryError("Open a file to view Git history.");
+      lastHistoryPathRef.current = null;
+      return;
+    }
+
+    if (
+      !force
+      && lastHistoryPathRef.current === historyTargetPath
+      && historyEntries.length > 0
+      && !historyError
+    ) {
       return;
     }
 
@@ -319,16 +330,18 @@ function App() {
       setHistoryRepoRoot(result.repoRoot);
       setHistoryRelativePath(result.relativePath);
       setHistorySelectedHash(null);
+      lastHistoryPathRef.current = historyTargetPath;
     } catch (error) {
       const message = formatInvokeError(error);
       setHistoryEntries([]);
       setHistoryRepoRoot(null);
       setHistoryRelativePath(null);
       setHistoryError(message);
+      lastHistoryPathRef.current = null;
     } finally {
       setHistoryBusy(false);
     }
-  }, [formatInvokeError, historyTargetPath]);
+  }, [formatInvokeError, historyEntries.length, historyError, historyTargetPath]);
 
   const handleCompareCommit = useCallback(
     async (entry: GitHistoryEntry) => {
@@ -494,15 +507,6 @@ function App() {
               <span className="action-label-full">Open Right File</span>
               <span className="action-label-short">Right File</span>
             </button>
-            <button
-              className={`action-btn${historyOpen ? " is-active" : ""}`}
-              type="button"
-              onClick={() => setHistoryOpen((prev) => !prev)}
-              aria-pressed={historyOpen}
-            >
-              <span className="action-label-full">History</span>
-              <span className="action-label-short">History</span>
-            </button>
           </div>
           <div className="toggle">
             <button
@@ -525,92 +529,101 @@ function App() {
           </div>
         </header>
         <div className="workspace">
-          <aside
-            className={`history-panel${historyOpen ? " is-open" : ""}`}
-            aria-label="Git history"
-            aria-hidden={!historyOpen}
+          <div
+            className={`history-shell${historyOpen ? " is-open" : ""}`}
+            onMouseEnter={() => setHistoryOpen(true)}
+            onMouseLeave={() => setHistoryOpen(false)}
           >
-            {historyOpen ? (
-              <div className="history-panel-inner">
-                <div className="history-panel-header">
-                  <div className="history-panel-title">
-                    <span className="history-title">History</span>
-                    <span className="history-subtitle">
-                      {historyRelativePath
-                        ? `File: ${historyRelativePath}`
-                        : "Git history"}
-                    </span>
-                  </div>
-                  <button
-                    className="history-refresh"
-                    type="button"
-                    onClick={() => void fetchHistory()}
-                    disabled={historyBusy}
-                  >
-                    {historyBusy ? "Loading..." : "Refresh"}
-                  </button>
-                </div>
-                <div className="history-controls">
-                  <label className="history-control">
-                    <span>Source</span>
-                    <select
-                      value={historySourceSide}
-                      onChange={(event) =>
-                        setHistorySourceSide(
-                          event.target.value as "original" | "modified",
-                        )
-                      }
-                      disabled={!(originalIsFile && modifiedIsFile)}
+            <div className="history-handle" aria-hidden="true">
+              History
+            </div>
+            <aside
+              className="history-panel"
+              aria-label="Git history"
+              aria-hidden={!historyOpen}
+            >
+              {historyOpen ? (
+                <div className="history-panel-inner">
+                  <div className="history-panel-header">
+                    <div className="history-panel-title">
+                      <span className="history-title">History</span>
+                      <span className="history-subtitle">
+                        {historyRelativePath
+                          ? `File: ${historyRelativePath}`
+                          : "Git history"}
+                      </span>
+                    </div>
+                    <button
+                      className="history-refresh"
+                      type="button"
+                      onClick={() => void fetchHistory(true)}
+                      disabled={historyBusy}
                     >
-                      <option value="original" disabled={!originalIsFile}>
-                        Left file
-                      </option>
-                      <option value="modified" disabled={!modifiedIsFile}>
-                        Right file
-                      </option>
-                    </select>
-                  </label>
+                      {historyBusy ? "Loading..." : "Refresh"}
+                    </button>
+                  </div>
+                  <div className="history-controls">
+                    <label className="history-control">
+                      <span>Source</span>
+                      <select
+                        value={historySourceSide}
+                        onChange={(event) =>
+                          setHistorySourceSide(
+                            event.target.value as "original" | "modified",
+                          )
+                        }
+                        disabled={!(originalIsFile && modifiedIsFile)}
+                      >
+                        <option value="original" disabled={!originalIsFile}>
+                          Left file
+                        </option>
+                        <option value="modified" disabled={!modifiedIsFile}>
+                          Right file
+                        </option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="history-list">
+                    {historyBusy ? (
+                      <div className="history-empty">Loading history...</div>
+                    ) : historyError ? (
+                      <div className="history-empty">{historyError}</div>
+                    ) : historyEntries.length === 0 ? (
+                      <div className="history-empty">No commits yet.</div>
+                    ) : (
+                      historyEntries.map((entry) => {
+                        const shortHash = entry.hash.slice(0, 7);
+                        const isActive = historySelectedHash === entry.hash;
+                        const isLoading = historyLoadingHash === entry.hash;
+                        return (
+                          <button
+                            key={entry.hash}
+                            type="button"
+                            className={`history-item${isActive ? " is-active" : ""}`}
+                            onClick={() => void handleCompareCommit(entry)}
+                            disabled={entry.deleted || isLoading}
+                          >
+                            <span className="history-item-title">
+                              {entry.summary || "(no message)"}
+                            </span>
+                            <span className="history-item-meta">
+                              {shortHash} · {entry.author} · {formatCommitTime(entry.timestamp)}
+                            </span>
+                            {entry.deleted ? (
+                              <span className="history-item-note">Deleted in this commit</span>
+                            ) : null}
+                            {isLoading ? (
+                              <span className="history-item-note">Loading content...</span>
+                            ) : null}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
-                <div className="history-list">
-                  {historyBusy ? (
-                    <div className="history-empty">Loading history...</div>
-                  ) : historyError ? (
-                    <div className="history-empty">{historyError}</div>
-                  ) : historyEntries.length === 0 ? (
-                    <div className="history-empty">No commits yet.</div>
-                  ) : (
-                    historyEntries.map((entry) => {
-                      const shortHash = entry.hash.slice(0, 7);
-                      const isActive = historySelectedHash === entry.hash;
-                      const isLoading = historyLoadingHash === entry.hash;
-                      return (
-                        <button
-                          key={entry.hash}
-                          type="button"
-                          className={`history-item${isActive ? " is-active" : ""}`}
-                          onClick={() => void handleCompareCommit(entry)}
-                          disabled={entry.deleted || isLoading}
-                        >
-                          <span className="history-item-title">
-                            {entry.summary || "(no message)"}
-                          </span>
-                          <span className="history-item-meta">
-                            {shortHash} · {entry.author} · {formatCommitTime(entry.timestamp)}
-                          </span>
-                          {entry.deleted ? (
-                            <span className="history-item-note">Deleted in this commit</span>
-                          ) : null}
-                          {isLoading ? (
-                            <span className="history-item-note">Loading content...</span>
-                          ) : null}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </aside>
+              ) : null}
+            </aside>
+          </div>
           <section className="diff-panel" aria-label="Diff editor">
             <DiffEditor
               original={originalText}
