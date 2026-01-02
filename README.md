@@ -85,9 +85,7 @@ npm run tauri dev
 - Git 集成：单文件历史对比（基于 git CLI）
 
 ### 计划中 🚧
-- 搜索功能：在差异中搜索并高亮
-- 粘贴文本对比
-
+- 快捷键
 
 ## 许可证
 MIT License
