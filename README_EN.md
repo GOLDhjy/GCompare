@@ -2,6 +2,7 @@
 
 [![Build](https://github.com/GOLDhjy/GCompare/actions/workflows/release.yml/badge.svg)](https://github.com/GOLDhjy/GCompare/actions/workflows/release.yml)
 [![Release](https://img.shields.io/github/v/release/GOLDhjy/GCompare)](https://github.com/GOLDhjy/GCompare/releases)
+[![Downloads](https://img.shields.io/github/downloads/GOLDhjy/GCompare/total)](https://github.com/GOLDhjy/GCompare/releases)
 [![Stars](https://img.shields.io/github/stars/GOLDhjy/GCompare)](https://github.com/GOLDhjy/GCompare/stargazers)
 [![License](https://img.shields.io/github/license/GOLDhjy/GCompare)](LICENSE)
 
