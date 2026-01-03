@@ -225,15 +225,32 @@ function App() {
     };
   }, []);
 
+  const syncDiffChanges = useCallback(() => {
+    const editor = diffEditorRef.current;
+    if (!editor) {
+      return;
+    }
+    const changes = editor.getLineChanges() ?? [];
+    setDiffChanges(
+      changes.map((change) => ({
+        originalStartLineNumber: change.originalStartLineNumber,
+        originalEndLineNumber: change.originalEndLineNumber,
+        modifiedStartLineNumber: change.modifiedStartLineNumber,
+        modifiedEndLineNumber: change.modifiedEndLineNumber,
+      })),
+    );
+    setDiffIndex((prev) => {
+      if (changes.length === 0) {
+        return 0;
+      }
+      return Math.min(prev, changes.length - 1);
+    });
+  }, []);
+
   const handleDiffMount = (editor: MonacoDiffEditor) => {
     diffEditorRef.current = editor;
     diffListenersRef.current.forEach((listener) => listener.dispose());
     diffListenersRef.current = [];
-
-    const model = editor.getModel();
-    if (!model) {
-      return;
-    }
 
     const originalEditor = editor.getOriginalEditor();
     const modifiedEditor = editor.getModifiedEditor();
@@ -249,33 +266,25 @@ function App() {
       }),
     );
 
-    const updateDiffChanges = () => {
-      const changes = editor.getLineChanges() ?? [];
-      setDiffChanges(
-        changes.map((change) => ({
-          originalStartLineNumber: change.originalStartLineNumber,
-          originalEndLineNumber: change.originalEndLineNumber,
-          modifiedStartLineNumber: change.modifiedStartLineNumber,
-          modifiedEndLineNumber: change.modifiedEndLineNumber,
-        })),
-      );
-      setDiffIndex((prev) => {
-        if (changes.length === 0) {
-          return 0;
-        }
-        return Math.min(prev, changes.length - 1);
-      });
-    };
-
-    updateDiffChanges();
-    diffListenersRef.current.push(editor.onDidUpdateDiff(updateDiffChanges));
-    diffListenersRef.current.push(editor.onDidChangeModel(updateDiffChanges));
+    syncDiffChanges();
+    diffListenersRef.current.push(editor.onDidUpdateDiff(syncDiffChanges));
+    diffListenersRef.current.push(editor.onDidChangeModel(syncDiffChanges));
 
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
     const message = `[perf] DiffEditor mounted at ${Math.round(now - appStart)}ms`;
     console.info(message);
     void appendStartupLog(message);
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      syncDiffChanges();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [modifiedText, originalText, sideBySide, syncDiffChanges]);
 
   const getPreferredSide = useCallback(() => {
     if (focusedSideRef.current) {
@@ -579,7 +588,8 @@ function App() {
 
   const handleNavigateDiff = useCallback(
     (direction: "next" | "prev") => {
-      if (!diffEditorRef.current) {
+      const editor = diffEditorRef.current;
+      if (!editor) {
         return;
       }
       if (diffChanges.length === 0) {
@@ -609,18 +619,39 @@ function App() {
         change.originalStartLineNumber,
         change.originalEndLineNumber,
       );
-      const useModified = change.modifiedStartLineNumber > 0 || change.modifiedEndLineNumber > 0;
-      const targetEditor = useModified
-        ? diffEditorRef.current.getModifiedEditor()
-        : diffEditorRef.current.getOriginalEditor();
-      const targetLine = useModified ? modifiedLine : originalLine;
+      const hasModified =
+        change.modifiedStartLineNumber > 0 || change.modifiedEndLineNumber > 0;
+      const hasOriginal =
+        change.originalStartLineNumber > 0 || change.originalEndLineNumber > 0;
+      const originalEditor = editor.getOriginalEditor();
+      const modifiedEditor = editor.getModifiedEditor();
+      const revealLine = (
+        targetEditor: ReturnType<MonacoDiffEditor["getOriginalEditor"]>,
+        line: number,
+      ) => {
+        targetEditor.revealLineInCenter(line);
+        targetEditor.setPosition({ lineNumber: line, column: 1 });
+      };
 
-      targetEditor.revealLineInCenter(targetLine);
-      targetEditor.setPosition({ lineNumber: targetLine, column: 1 });
+      if (!sideBySide) {
+        const targetLine = hasModified ? modifiedLine : originalLine;
+        revealLine(modifiedEditor, targetLine);
+        modifiedEditor.focus();
+        setDiffIndex(nextIndex);
+        return;
+      }
+
+      if (hasOriginal) {
+        revealLine(originalEditor, originalLine);
+      }
+      if (hasModified) {
+        revealLine(modifiedEditor, modifiedLine);
+      }
+      const targetEditor = hasModified ? modifiedEditor : originalEditor;
       targetEditor.focus();
       setDiffIndex(nextIndex);
     },
-    [diffChanges, diffIndex, showStatus],
+    [diffChanges, diffIndex, showStatus, sideBySide],
   );
 
   useEffect(() => {
