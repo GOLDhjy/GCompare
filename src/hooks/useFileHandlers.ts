@@ -46,6 +46,20 @@ export const useFileHandlers = ({
     return `${bytes} B`;
   }, []);
 
+  const showLoadedStatus = useCallback(
+    (size: number) => {
+      if (size >= largeFileThreshold) {
+        showStatus(
+          `File loaded. Large: ${formatBytes(size)}.`,
+          2600,
+        );
+      } else {
+        showStatus("File loaded.");
+      }
+    },
+    [formatBytes, largeFileThreshold, showStatus],
+  );
+
   const loadFileToSide = useCallback(async (path: string, side: Side) => {
     try {
       const bytes = await readFile(path);
@@ -181,32 +195,17 @@ export const useFileHandlers = ({
     [flushOpenQueue],
   );
 
-  const handleOpenFile = useCallback(
-    async (side: Side) => {
+  const openFilePath = useCallback(
+    async (path: string, preferredSide?: Side) => {
+      if (!path) {
+        return;
+      }
+      const side = preferredSide ?? resolveOpenSide();
       const sideWasEmpty = reserveSide(side);
       try {
-        const selection = await open({
-          multiple: false,
-          directory: false,
-        });
-
-        if (!selection || Array.isArray(selection)) {
-          if (sideWasEmpty) {
-            pathStateRef.current[side] = false;
-          }
-          return;
-        }
-
-        const result = await loadFileToSide(selection, side);
+        const result = await loadFileToSide(path, side);
         if (result.ok) {
-          if (result.size >= largeFileThreshold) {
-            showStatus(
-              `File loaded. Large: ${formatBytes(result.size)}.`,
-              2600,
-            );
-          } else {
-            showStatus("File loaded.");
-          }
+          showLoadedStatus(result.size);
         } else {
           if (sideWasEmpty) {
             pathStateRef.current[side] = false;
@@ -221,7 +220,44 @@ export const useFileHandlers = ({
         showStatus("Failed to load file.", 2500);
       }
     },
-    [formatBytes, largeFileThreshold, loadFileToSide, reserveSide, showStatus],
+    [loadFileToSide, reserveSide, resolveOpenSide, showLoadedStatus, showStatus],
+  );
+
+  const handleOpenFile = useCallback(
+    async (side: Side, defaultPath?: string) => {
+      const sideWasEmpty = reserveSide(side);
+      try {
+        const selection = await open({
+          multiple: false,
+          directory: false,
+          defaultPath,
+        });
+
+        if (!selection || Array.isArray(selection)) {
+          if (sideWasEmpty) {
+            pathStateRef.current[side] = false;
+          }
+          return;
+        }
+
+        const result = await loadFileToSide(selection, side);
+        if (result.ok) {
+          showLoadedStatus(result.size);
+        } else {
+          if (sideWasEmpty) {
+            pathStateRef.current[side] = false;
+          }
+          showStatus("Failed to load file.", 2500);
+        }
+      } catch (error) {
+        console.error(error);
+        if (sideWasEmpty) {
+          pathStateRef.current[side] = false;
+        }
+        showStatus("Failed to load file.", 2500);
+      }
+    },
+    [loadFileToSide, reserveSide, showLoadedStatus, showStatus],
   );
 
   const setSideContent = useCallback((side: Side, contents: string, path: string | null) => {
@@ -243,6 +279,7 @@ export const useFileHandlers = ({
     applyPaths,
     enqueueOpenPaths,
     handleOpenFile,
+    openFilePath,
     setSideContent,
   };
 };

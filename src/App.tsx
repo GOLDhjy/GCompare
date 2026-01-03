@@ -8,6 +8,7 @@ import { BaseDirectory } from "@tauri-apps/api/path";
 import { check, type DownloadEvent } from "@tauri-apps/plugin-updater";
 import { useFileHandlers } from "./hooks/useFileHandlers";
 import { useMonacoRemeasure } from "./hooks/useMonacoRemeasure";
+import { useRecents } from "./hooks/useRecents";
 import { useStatusMessage } from "./hooks/useStatusMessage";
 import { useSettings } from "./hooks/useSettings";
 import { useSystemTheme } from "./hooks/useSystemTheme";
@@ -64,6 +65,11 @@ type LineChange = {
   modifiedStartLineNumber: number;
   modifiedEndLineNumber: number;
 };
+type PathParts = {
+  name: string;
+  parent: string;
+  full: string;
+};
 const appendStartupLog = async (message: string) => {
   const timestamp = new Date().toISOString();
   const line = `[${timestamp}] ${message}`;
@@ -94,6 +100,17 @@ if (import.meta.env.PROD && typeof window !== "undefined") {
   loader.config({ paths: { vs: monacoBaseUrl } });
 }
 
+const getPathParts = (path: string): PathParts => {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const slashIndex = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (slashIndex === -1) {
+    return { name: trimmed, parent: "", full: path };
+  }
+  const name = trimmed.slice(slashIndex + 1) || trimmed;
+  const parent = trimmed.slice(0, slashIndex);
+  return { name, parent, full: path };
+};
+
 function App() {
   const { settings, updateTheme, updateViewMode } = useSettings();
   const systemTheme = useSystemTheme();
@@ -114,6 +131,7 @@ function App() {
     applyPaths,
     enqueueOpenPaths,
     handleOpenFile,
+    openFilePath,
     setSideContent,
   } = useFileHandlers({
     initialOriginalText,
@@ -121,6 +139,12 @@ function App() {
     largeFileThreshold,
     showStatus,
   });
+  const {
+    recentFiles,
+    recentProjects,
+    addRecentFile,
+    clearRecents,
+  } = useRecents();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyPinned, setHistoryPinned] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
@@ -134,6 +158,8 @@ function App() {
   const [historySelectedHash, setHistorySelectedHash] = useState<string | null>(null);
   const [historyLoadingHash, setHistoryLoadingHash] = useState<string | null>(null);
   const lastHistoryPathRef = useRef<string | null>(null);
+  const [recentsOpen, setRecentsOpen] = useState(false);
+  const [recentsPinned, setRecentsPinned] = useState(false);
   const [diffChanges, setDiffChanges] = useState<LineChange[]>([]);
   const [diffIndex, setDiffIndex] = useState(0);
 
@@ -148,6 +174,8 @@ function App() {
         ? modifiedPath
         : null;
   const historyVisible = historyPinned || historyOpen;
+  const recentsVisible = recentsPinned || recentsOpen;
+  const hasRecents = recentFiles.length > 0 || recentProjects.length > 0;
 
   useMonacoRemeasure(diffEditorRef);
 
@@ -175,6 +203,18 @@ function App() {
       setHistorySourceSide("original");
     }
   }, [historySourceSide, modifiedIsFile, originalIsFile]);
+
+  useEffect(() => {
+    if (originalPath && !isVirtualPath(originalPath)) {
+      addRecentFile(originalPath);
+    }
+  }, [addRecentFile, originalPath]);
+
+  useEffect(() => {
+    if (modifiedPath && !isVirtualPath(modifiedPath)) {
+      addRecentFile(modifiedPath);
+    }
+  }, [addRecentFile, modifiedPath]);
 
   useEffect(() => {
     return () => {
@@ -236,6 +276,35 @@ function App() {
     console.info(message);
     void appendStartupLog(message);
   };
+
+  const getPreferredSide = useCallback(() => {
+    if (focusedSideRef.current) {
+      return focusedSideRef.current;
+    }
+    if (!originalIsFile) {
+      return "original";
+    }
+    if (!modifiedIsFile) {
+      return "modified";
+    }
+    return "original";
+  }, [modifiedIsFile, originalIsFile]);
+
+  const handleOpenRecentFile = useCallback(
+    (path: string) => {
+      const side = getPreferredSide();
+      void openFilePath(path, side);
+    },
+    [getPreferredSide, openFilePath],
+  );
+
+  const handleOpenRecentProject = useCallback(
+    (path: string) => {
+      const side = getPreferredSide();
+      void handleOpenFile(side, path);
+    },
+    [getPreferredSide, handleOpenFile],
+  );
 
   const getDropSide = (rawX: number) => {
     const scale = window.devicePixelRatio || 1;
@@ -868,6 +937,110 @@ function App() {
               }}
             />
           </section>
+          <div
+            className={`recent-shell${recentsVisible ? " is-open" : ""}${recentsPinned ? " is-pinned" : ""}`}
+            onMouseEnter={() => setRecentsOpen(true)}
+            onMouseLeave={() => {
+              if (!recentsPinned) {
+                setRecentsOpen(false);
+              }
+            }}
+          >
+            <aside
+              className="recent-panel"
+              aria-label="Recent files and projects"
+              aria-hidden={!recentsVisible}
+            >
+              {recentsVisible ? (
+                <div className="recent-panel-inner">
+                  <div className="recent-panel-header">
+                    <div className="recent-panel-title">
+                      <span className="recent-title">Recents</span>
+                      <span className="recent-subtitle">Files & projects</span>
+                    </div>
+                    <div className="recent-panel-actions">
+                      <button
+                        className="recent-pin"
+                        type="button"
+                        onClick={() => setRecentsPinned((prev) => !prev)}
+                        aria-pressed={recentsPinned}
+                        title={recentsPinned ? "Unpin recents panel" : "Pin recents panel"}
+                      >
+                        {recentsPinned ? "Pinned" : "Pin"}
+                      </button>
+                      <button
+                        className="recent-clear"
+                        type="button"
+                        onClick={() => clearRecents()}
+                        disabled={!hasRecents}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div className="recent-section">
+                    <div className="recent-section-header">
+                      <span className="recent-section-title">Files</span>
+                    </div>
+                    <div className="recent-list">
+                      {recentFiles.length === 0 ? (
+                        <div className="recent-empty">No recent files.</div>
+                      ) : (
+                        recentFiles.map((path) => {
+                          const parts = getPathParts(path);
+                          const isActive =
+                            path === originalPath || path === modifiedPath;
+                          return (
+                            <button
+                              key={path}
+                              type="button"
+                              className={`recent-item${isActive ? " is-active" : ""}`}
+                              onClick={() => handleOpenRecentFile(path)}
+                              title={parts.full}
+                            >
+                              <span className="recent-item-title">{parts.name}</span>
+                              <span className="recent-item-meta">
+                                {parts.parent || parts.full}
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                  <div className="recent-section">
+                    <div className="recent-section-header">
+                      <span className="recent-section-title">Projects</span>
+                    </div>
+                    <div className="recent-list">
+                      {recentProjects.length === 0 ? (
+                        <div className="recent-empty">No recent projects.</div>
+                      ) : (
+                        recentProjects.map((path) => {
+                          const parts = getPathParts(path);
+                          return (
+                            <button
+                              key={path}
+                              type="button"
+                              className="recent-item"
+                              onClick={() => handleOpenRecentProject(path)}
+                              title={parts.full}
+                            >
+                              <span className="recent-item-title">{parts.name}</span>
+                              <span className="recent-item-meta">{parts.full}</span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </aside>
+            <div className="recent-handle" aria-hidden="true">
+              Recents
+            </div>
+          </div>
         </div>
         <div className="status-bar" role="status" aria-live="polite">
           <span className="status-item">
