@@ -808,16 +808,22 @@ function App() {
         <div className="workspace">
           <div
             className={`history-shell${historyVisible ? " is-open" : ""}${historyPinned ? " is-pinned" : ""}`}
-            onMouseEnter={() => setHistoryOpen(true)}
             onMouseLeave={() => {
               if (!historyPinned) {
                 setHistoryOpen(false);
               }
             }}
           >
-            <div className="history-handle" aria-hidden="true">
+            <button
+              className="history-handle"
+              type="button"
+              onMouseEnter={() => setHistoryOpen(true)}
+              onClick={() => setHistoryPinned((prev) => !prev)}
+              aria-pressed={historyPinned}
+              title={historyPinned ? "Unpin history panel" : "Pin history panel"}
+            >
               History
-            </div>
+            </button>
             <aside
               className="history-panel"
               aria-label="Git history"
@@ -835,15 +841,6 @@ function App() {
                       </span>
                     </div>
                     <div className="history-panel-actions">
-                      <button
-                        className="history-pin"
-                        type="button"
-                        onClick={() => setHistoryPinned((prev) => !prev)}
-                        aria-pressed={historyPinned}
-                        title={historyPinned ? "Unpin history panel" : "Pin history panel"}
-                      >
-                        {historyPinned ? "Pinned" : "Pin"}
-                      </button>
                       <button
                         className="history-refresh"
                         type="button"
@@ -939,7 +936,6 @@ function App() {
           </section>
           <div
             className={`recent-shell${recentsVisible ? " is-open" : ""}${recentsPinned ? " is-pinned" : ""}`}
-            onMouseEnter={() => setRecentsOpen(true)}
             onMouseLeave={() => {
               if (!recentsPinned) {
                 setRecentsOpen(false);
@@ -959,15 +955,6 @@ function App() {
                       <span className="recent-subtitle">Files & projects</span>
                     </div>
                     <div className="recent-panel-actions">
-                      <button
-                        className="recent-pin"
-                        type="button"
-                        onClick={() => setRecentsPinned((prev) => !prev)}
-                        aria-pressed={recentsPinned}
-                        title={recentsPinned ? "Unpin recents panel" : "Pin recents panel"}
-                      >
-                        {recentsPinned ? "Pinned" : "Pin"}
-                      </button>
                       <button
                         className="recent-clear"
                         type="button"
@@ -1037,9 +1024,16 @@ function App() {
                 </div>
               ) : null}
             </aside>
-            <div className="recent-handle" aria-hidden="true">
+            <button
+              className="recent-handle"
+              type="button"
+              onMouseEnter={() => setRecentsOpen(true)}
+              onClick={() => setRecentsPinned((prev) => !prev)}
+              aria-pressed={recentsPinned}
+              title={recentsPinned ? "Unpin recents panel" : "Pin recents panel"}
+            >
               Recents
-            </div>
+            </button>
           </div>
         </div>
         <div className="status-bar" role="status" aria-live="polite">
