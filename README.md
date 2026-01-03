@@ -34,7 +34,8 @@ https://github.com/GOLDhjy/GCompare/releases
 - 视图切换：点击 Inline 开关
 - 差异导航：点击 ↑ / ↓ 按钮
 - Git 历史：悬停左侧 History 标签，点击提交进行对比
-- 固定历史面板：点击 Pin
+- 固定历史面板：点击面板按钮可以 Pin
+- 最近打开文件，在右侧可以打开并且固定
 
 ## 快捷键
 - 左侧打开：Ctrl/Cmd + O
