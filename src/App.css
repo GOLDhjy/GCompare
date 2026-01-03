@@ -289,6 +289,15 @@ body {
   align-items: stretch;
 }
 
+.history-handles {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .history-handle {
   width: 18px;
   height: 160px;
@@ -497,6 +506,15 @@ body {
   flex: 0 0 auto;
   align-items: stretch;
   flex-direction: row;
+}
+
+.recent-handles {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 .recent-handle {

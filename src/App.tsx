@@ -814,16 +814,18 @@ function App() {
               }
             }}
           >
-            <button
-              className="history-handle"
-              type="button"
-              onMouseEnter={() => setHistoryOpen(true)}
-              onClick={() => setHistoryPinned((prev) => !prev)}
-              aria-pressed={historyPinned}
-              title={historyPinned ? "Unpin history panel" : "Pin history panel"}
-            >
-              History
-            </button>
+            <div className="history-handles">
+              <button
+                className="history-handle"
+                type="button"
+                onMouseEnter={() => setHistoryOpen(true)}
+                onClick={() => setHistoryPinned((prev) => !prev)}
+                aria-pressed={historyPinned}
+                title={historyPinned ? "Unpin history panel" : "Pin history panel"}
+              >
+                History
+              </button>
+            </div>
             <aside
               className="history-panel"
               aria-label="Git history"
@@ -1024,16 +1026,18 @@ function App() {
                 </div>
               ) : null}
             </aside>
-            <button
-              className="recent-handle"
-              type="button"
-              onMouseEnter={() => setRecentsOpen(true)}
-              onClick={() => setRecentsPinned((prev) => !prev)}
-              aria-pressed={recentsPinned}
-              title={recentsPinned ? "Unpin recents panel" : "Pin recents panel"}
-            >
-              Recents
-            </button>
+            <div className="recent-handles">
+              <button
+                className="recent-handle"
+                type="button"
+                onMouseEnter={() => setRecentsOpen(true)}
+                onClick={() => setRecentsPinned((prev) => !prev)}
+                aria-pressed={recentsPinned}
+                title={recentsPinned ? "Unpin recents panel" : "Pin recents panel"}
+              >
+                Recents
+              </button>
+            </div>
           </div>
         </div>
         <div className="status-bar" role="status" aria-live="polite">
