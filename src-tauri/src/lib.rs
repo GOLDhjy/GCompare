@@ -41,6 +41,27 @@ struct GitHistoryResult {
     entries: Vec<GitHistoryEntry>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VcsHistoryEntry {
+    provider: String,
+    hash: String,
+    timestamp: i64,
+    author: String,
+    summary: String,
+    path: String,
+    deleted: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VcsHistoryResult {
+    provider: String,
+    repo_root: Option<String>,
+    relative_path: String,
+    entries: Vec<VcsHistoryEntry>,
+}
+
 #[derive(Default)]
 struct PendingOpenPaths(Mutex<Vec<String>>);
 
@@ -155,6 +176,35 @@ fn run_git(args: &[String], cwd: &Path) -> Result<String, String> {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let fallback = format!("git exited with status {}", output.status);
         return Err(if stderr.is_empty() { fallback } else { stderr });
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn run_p4(args: &[String], cwd: &Path) -> Result<String, String> {
+    let output = Command::new("p4")
+        .current_dir(cwd)
+        .args(args)
+        .output()
+        .map_err(|error| {
+            if error.kind() == ErrorKind::NotFound {
+                "p4 is not installed or not available on PATH.".to_string()
+            } else {
+                format!("Failed to run p4: {error}")
+            }
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let fallback = format!("p4 exited with status {}", output.status);
+        return Err(if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            fallback
+        });
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -327,6 +377,219 @@ fn git_show_file(repo_root: String, commit: String, path: String) -> Result<Stri
         &vec!["--no-pager".into(), "show".into(), spec],
         &repo_root,
     )
+}
+
+fn map_git_entry(entry: GitHistoryEntry) -> VcsHistoryEntry {
+    VcsHistoryEntry {
+        provider: "git".to_string(),
+        hash: entry.hash,
+        timestamp: entry.timestamp,
+        author: entry.author,
+        summary: entry.summary,
+        path: entry.path,
+        deleted: entry.deleted,
+    }
+}
+
+fn map_git_result(result: GitHistoryResult) -> VcsHistoryResult {
+    VcsHistoryResult {
+        provider: "git".to_string(),
+        repo_root: Some(result.repo_root),
+        relative_path: result.relative_path,
+        entries: result.entries.into_iter().map(map_git_entry).collect(),
+    }
+}
+
+fn p4_history(path: String) -> Result<VcsHistoryResult, String> {
+    let file_path = PathBuf::from(&path);
+    if !file_path.is_file() {
+        return Err("Path is not a file.".to_string());
+    }
+    let parent = file_path
+        .parent()
+        .ok_or_else(|| "Invalid file path.".to_string())?;
+
+    let log_output = run_p4(
+        &vec![
+            "-ztag".into(),
+            "filelog".into(),
+            "-t".into(),
+            "-l".into(),
+            path.clone(),
+        ],
+        parent,
+    )?;
+
+    struct PendingP4Entry {
+        change: String,
+        timestamp: i64,
+        author: String,
+        summary: String,
+        path: String,
+        deleted: bool,
+    }
+
+    let mut entries = Vec::new();
+    let mut current_depot_path: Option<String> = None;
+    let mut pending: Option<PendingP4Entry> = None;
+
+    let mut flush_pending = |pending: &mut Option<PendingP4Entry>| {
+        if let Some(entry) = pending.take() {
+            entries.push(VcsHistoryEntry {
+                provider: "p4".to_string(),
+                hash: entry.change,
+                timestamp: entry.timestamp,
+                author: entry.author,
+                summary: entry.summary,
+                path: entry.path,
+                deleted: entry.deleted,
+            });
+        }
+    };
+
+    for line in log_output.lines() {
+        let trimmed = line.trim_end();
+        let Some(rest) = trimmed.strip_prefix("... ") else {
+            continue;
+        };
+
+        let mut parts = rest.splitn(2, ' ');
+        let key = parts.next().unwrap_or("");
+        let value = parts.next().unwrap_or("").trim();
+
+        match key {
+            "depotFile" => {
+                if !value.is_empty() {
+                    current_depot_path = Some(value.to_string());
+                }
+            }
+            "change" => {
+                flush_pending(&mut pending);
+                let entry_path = current_depot_path
+                    .clone()
+                    .unwrap_or_else(|| path.clone());
+                pending = Some(PendingP4Entry {
+                    change: value.to_string(),
+                    timestamp: 0,
+                    author: String::new(),
+                    summary: String::new(),
+                    path: entry_path,
+                    deleted: false,
+                });
+            }
+            "time" => {
+                if let Some(entry) = pending.as_mut() {
+                    entry.timestamp = value.parse::<i64>().unwrap_or(0);
+                }
+            }
+            "user" => {
+                if let Some(entry) = pending.as_mut() {
+                    entry.author = value.to_string();
+                }
+            }
+            "desc" => {
+                if let Some(entry) = pending.as_mut() {
+                    if entry.summary.is_empty() {
+                        entry.summary = value.to_string();
+                    }
+                }
+            }
+            "action" => {
+                if let Some(entry) = pending.as_mut() {
+                    if value.contains("delete") {
+                        entry.deleted = true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    flush_pending(&mut pending);
+
+    let relative_path = current_depot_path.unwrap_or(path);
+
+    Ok(VcsHistoryResult {
+        provider: "p4".to_string(),
+        repo_root: None,
+        relative_path,
+        entries,
+    })
+}
+
+fn is_git_no_history(error: &str) -> bool {
+    let lower = error.to_lowercase();
+    error == "git is not installed or not available on PATH."
+        || error == "File is not inside the repository."
+        || error == "File is not tracked in git."
+        || error == "Unable to resolve repository root."
+        || lower.contains("not a git repository")
+        || lower.contains("not in a git directory")
+}
+
+fn is_p4_no_history(error: &str) -> bool {
+    let lower = error.to_lowercase();
+    error == "p4 is not installed or not available on PATH."
+        || lower.contains("not under client's root")
+        || lower.contains("not in client view")
+        || lower.contains("not in client")
+        || lower.contains("not on client")
+        || lower.contains("no such file")
+        || lower.contains("file(s) not in client")
+}
+
+fn fallback_relative_path(path: &str) -> String {
+    let file_path = PathBuf::from(path);
+    file_path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string())
+}
+
+fn empty_history(path: String) -> VcsHistoryResult {
+    VcsHistoryResult {
+        provider: "none".to_string(),
+        repo_root: None,
+        relative_path: fallback_relative_path(&path),
+        entries: Vec::new(),
+    }
+}
+
+#[tauri::command]
+fn vcs_history(path: String) -> Result<VcsHistoryResult, String> {
+    match git_history(path.clone()) {
+        Ok(result) => Ok(map_git_result(result)),
+        Err(git_error) => {
+            if git_error == "Path is not a file." || git_error == "Invalid file path." {
+                return Err(git_error);
+            }
+            match p4_history(path.clone()) {
+                Ok(result) => Ok(result),
+                Err(p4_error) => {
+                    if is_git_no_history(&git_error) && is_p4_no_history(&p4_error) {
+                        Ok(empty_history(path))
+                    } else {
+                        Err(format!(
+                            "Git history unavailable: {git_error}. P4 history unavailable: {p4_error}"
+                        ))
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[tauri::command]
+fn p4_show_file(path: String, change: String, working_path: String) -> Result<String, String> {
+    if change.is_empty() || !change.chars().all(|c| c.is_ascii_digit()) {
+        return Err("Invalid changelist.".to_string());
+    }
+    let spec = format!("{path}@={change}");
+    let working_path = PathBuf::from(working_path);
+    let cwd = working_path
+        .parent()
+        .ok_or_else(|| "Invalid file path.".to_string())?;
+    run_p4(&vec!["print".into(), "-q".into(), spec], cwd)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -554,7 +817,9 @@ pub fn run() {
             restart_app,
             consume_open_paths,
             git_history,
-            git_show_file
+            git_show_file,
+            vcs_history,
+            p4_show_file
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");

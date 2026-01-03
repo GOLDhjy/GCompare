@@ -24,7 +24,7 @@ const largeFileThreshold = 2 * 1024 * 1024;
 const initialOriginalText = [
   "Project: GCompare",
   "Focus: Text and file diffs",
-  "Next: Git history compare",
+  "Next: History compare",
   "",
   "- Fast navigation",
   "- Clean layout",
@@ -32,16 +32,21 @@ const initialOriginalText = [
 ].join("\n");
 const initialModifiedText = [
   "Project: GCompare",
-  "Focus: Text, file, and Git diffs",
+  "Focus: Text, file, and VCS diffs",
   "Next: History compare and packaging",
   "",
   "- Fast navigation",
   "- Clean layout",
   "- Cross-platform",
-  "- Git CLI support",
+  "- Git/P4 CLI support",
 ].join("\n");
 const gitVirtualPathPrefix = "git:";
-type GitHistoryEntry = {
+const p4VirtualPathPrefix = "p4:";
+const vcsVirtualPathPrefixes = [gitVirtualPathPrefix, p4VirtualPathPrefix];
+type VcsProvider = "git" | "p4";
+type HistoryProvider = VcsProvider | "none";
+type HistoryEntry = {
+  provider: VcsProvider;
   hash: string;
   timestamp: number;
   author: string;
@@ -49,14 +54,19 @@ type GitHistoryEntry = {
   path: string;
   deleted: boolean;
 };
-type GitHistoryResult = {
-  repoRoot: string;
+type HistoryResult = {
+  provider: HistoryProvider;
+  repoRoot: string | null;
   relativePath: string;
-  entries: GitHistoryEntry[];
+  entries: HistoryEntry[];
 };
 type EditorSide = "original" | "modified";
 const isVirtualPath = (path: string | null) =>
-  Boolean(path && path.startsWith(gitVirtualPathPrefix));
+  Boolean(path && vcsVirtualPathPrefixes.some((prefix) => path.startsWith(prefix)));
+const getHistoryId = (entry: HistoryEntry) =>
+  entry.provider === "git" ? entry.hash.slice(0, 7) : entry.hash;
+const getHistoryPrefix = (provider: VcsProvider) =>
+  provider === "git" ? gitVirtualPathPrefix : p4VirtualPathPrefix;
 const formatCommitTime = (timestamp: number) =>
   new Date(timestamp * 1000).toLocaleString();
 type LineChange = {
@@ -148,8 +158,9 @@ function App() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyPinned, setHistoryPinned] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
-  const [historyEntries, setHistoryEntries] = useState<GitHistoryEntry[]>([]);
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyProvider, setHistoryProvider] = useState<HistoryProvider | null>(null);
   const [historyRepoRoot, setHistoryRepoRoot] = useState<string | null>(null);
   const [historyRelativePath, setHistoryRelativePath] = useState<string | null>(null);
   const [historySourceSide, setHistorySourceSide] = useState<"original" | "modified">(
@@ -483,9 +494,10 @@ function App() {
   const fetchHistory = useCallback(async (force = false) => {
     if (!historyTargetPath) {
       setHistoryEntries([]);
+      setHistoryProvider(null);
       setHistoryRepoRoot(null);
       setHistoryRelativePath(null);
-      setHistoryError("Open a file to view Git history.");
+      setHistoryError("Open a file to view history.");
       lastHistoryPathRef.current = null;
       return;
     }
@@ -502,17 +514,19 @@ function App() {
     setHistoryBusy(true);
     setHistoryError(null);
     try {
-      const result = await invoke<GitHistoryResult>("git_history", {
+      const result = await invoke<HistoryResult>("vcs_history", {
         path: historyTargetPath,
       });
       setHistoryEntries(result.entries);
       setHistoryRepoRoot(result.repoRoot);
       setHistoryRelativePath(result.relativePath);
+      setHistoryProvider(result.provider);
       setHistorySelectedHash(null);
       lastHistoryPathRef.current = historyTargetPath;
     } catch (error) {
       const message = formatInvokeError(error);
       setHistoryEntries([]);
+      setHistoryProvider(null);
       setHistoryRepoRoot(null);
       setHistoryRelativePath(null);
       setHistoryError(message);
@@ -523,12 +537,16 @@ function App() {
   }, [formatInvokeError, historyEntries.length, historyError, historyTargetPath]);
 
   const handleCompareCommit = useCallback(
-    async (entry: GitHistoryEntry) => {
+    async (entry: HistoryEntry) => {
       if (entry.deleted) {
-        showStatus("This commit deleted the file.", 2500);
+        showStatus("This change deleted the file.", 2500);
         return;
       }
-      if (!historyRepoRoot || !historyTargetPath) {
+      if (!historyTargetPath) {
+        showStatus("History is not available yet.", 2500);
+        return;
+      }
+      if (entry.provider === "git" && !historyRepoRoot) {
         showStatus("Git history is not available yet.", 2500);
         return;
       }
@@ -536,13 +554,20 @@ function App() {
       setHistoryLoadingHash(entry.hash);
       setHistorySelectedHash(entry.hash);
       try {
-        const content = await invoke<string>("git_show_file", {
-          repoRoot: historyRepoRoot,
-          commit: entry.hash,
-          path: entry.path,
-        });
-        const shortHash = entry.hash.slice(0, 7);
-        const commitLabel = `${gitVirtualPathPrefix}${shortHash}:${entry.path}`;
+        const content =
+          entry.provider === "git"
+            ? await invoke<string>("git_show_file", {
+                repoRoot: historyRepoRoot,
+                commit: entry.hash,
+                path: entry.path,
+              })
+            : await invoke<string>("p4_show_file", {
+                path: entry.path,
+                change: entry.hash,
+                workingPath: historyTargetPath,
+              });
+        const displayId = getHistoryId(entry);
+        const commitLabel = `${getHistoryPrefix(entry.provider)}${displayId}:${entry.path}`;
         const workingText =
           historySourceSide === "original" ? originalText : modifiedText;
         const workingPath = historyTargetPath;
@@ -561,12 +586,12 @@ function App() {
         }
 
         showStatus(
-          `Comparing with ${shortHash}.${overwroteOtherSide ? " Replaced the other side." : ""}`,
+          `Comparing with ${displayId}.${overwroteOtherSide ? " Replaced the other side." : ""}`,
           2600,
         );
       } catch (error) {
         console.error(error);
-        showStatus("Failed to load commit content.", 2500);
+        showStatus("Failed to load history content.", 2500);
       } finally {
         setHistoryLoadingHash(null);
       }
@@ -859,7 +884,7 @@ function App() {
             </div>
             <aside
               className="history-panel"
-              aria-label="Git history"
+              aria-label="History"
               aria-hidden={!historyVisible}
             >
               {historyVisible ? (
@@ -870,7 +895,11 @@ function App() {
                       <span className="history-subtitle">
                         {historyRelativePath
                           ? `File: ${historyRelativePath}`
-                          : "Git history"}
+                          : historyProvider === "git"
+                            ? "Git history"
+                            : historyProvider === "p4"
+                              ? "P4 history"
+                              : "History"}
                       </span>
                     </div>
                     <div className="history-panel-actions">
@@ -911,15 +940,17 @@ function App() {
                     ) : historyError ? (
                       <div className="history-empty">{historyError}</div>
                     ) : historyEntries.length === 0 ? (
-                      <div className="history-empty">No commits yet.</div>
+                      <div className="history-empty">No history entries yet.</div>
                     ) : (
                       historyEntries.map((entry) => {
-                        const shortHash = entry.hash.slice(0, 7);
+                        const displayId = getHistoryId(entry);
+                        const idLabel =
+                          entry.provider === "git" ? displayId : `CL ${displayId}`;
                         const isActive = historySelectedHash === entry.hash;
                         const isLoading = historyLoadingHash === entry.hash;
                         return (
                           <button
-                            key={entry.hash}
+                            key={`${entry.provider}:${entry.hash}`}
                             type="button"
                             className={`history-item${isActive ? " is-active" : ""}`}
                             onClick={() => void handleCompareCommit(entry)}
@@ -929,10 +960,10 @@ function App() {
                               {entry.summary || "(no message)"}
                             </span>
                             <span className="history-item-meta">
-                              {shortHash} · {entry.author} · {formatCommitTime(entry.timestamp)}
+                              {idLabel} · {entry.author} · {formatCommitTime(entry.timestamp)}
                             </span>
                             {entry.deleted ? (
-                              <span className="history-item-note">Deleted in this commit</span>
+                              <span className="history-item-note">Deleted in this change</span>
                             ) : null}
                             {isLoading ? (
                               <span className="history-item-note">Loading content...</span>
