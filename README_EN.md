@@ -19,7 +19,7 @@ GCompare is a cross-platform text/file diff tool built with Tauri v2. It focuses
 - Inline / Side-by-side switch
 - Diff navigation (previous/next)
 - Theme settings (system / light / dark)
-- Git history panel: commit list + single-file compare (via git CLI)
+- Git/P4 history panel: commit/changelist list + single-file compare (via git/p4 CLI)
 
 ## Download
 See Releases:  
@@ -31,7 +31,7 @@ https://github.com/GOLDhjy/GCompare/releases
 - Open with: use “Open with GCompare”
 - Switch view: use the Inline toggle
 - Diff navigation: use the ↑ / ↓ buttons
-- Git history: hover the History tab, click a commit to compare
+- Git/P4 history: hover the History tab, click a commit/changelist to compare (Git first)
 - Pin history panel: click Pin
 
 ## Shortcuts
@@ -56,7 +56,7 @@ npm run tauri dev
 - Inline / Side-by-side switch
 - Diff navigation: previous/next change
 - Dark/Light theme toggle
-- Git integration: single-file history compare (via git CLI)
+- Git/P4 integration: single-file history compare (via git/p4 CLI, Git first)
 
 ### Planned 🚧
 - Search: Find and highlight in diffs

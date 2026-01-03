@@ -9,6 +9,8 @@
 
 [English version](README_EN.md)
 
+[官网Page](https://goldhjy.github.io/GCompare/)
+
 GCompare 是一个基于 Tauri v2 的跨平台文本/文件差异对比工具，目标是做一个轻量、可离线、面向开发者的对比工具，尽量保持最后的包体较小。
 
 ## 功能
@@ -18,7 +20,7 @@ GCompare 是一个基于 Tauri v2 的跨平台文本/文件差异对比工具，
 - Inline / Side-by-side 切换
 - 差异导航（上一个 / 下一个）
 - 主题设置（系统 / 亮色 / 深色）
-- Git 历史面板：提交列表与单文件对比（基于 git CLI），点击可以固定面板在左侧
+- Git/P4 历史面板：提交/变更列表与单文件对比（基于 git/p4 CLI），点击可以固定面板在左侧
 - 支持编辑文件以及保存文件
 - 检查更新可以自动更新为新版，位于help里面
 
@@ -34,7 +36,7 @@ https://github.com/GOLDhjy/GCompare/releases
 - 系统打开：将文件“用 GCompare 打开”
 - 视图切换：点击 Inline 开关
 - 差异导航：点击 ↑ / ↓ 按钮
-- Git 历史：悬停左侧 History 标签，点击提交进行对比
+- Git/P4 历史：悬停左侧 History 标签，点击提交/变更进行对比（优先 Git）
 - 固定历史面板：点击面板按钮可以 Pin
 - 最近打开文件，在右侧可以打开并且固定
 
@@ -86,7 +88,7 @@ npm run tauri dev
 - Inline / Side-by-side 切换
 - 差异导航：上一个/下一个差异
 - 暗色/深色主题切换
-- Git 集成：单文件历史对比（基于 git CLI）
+- Git/P4 集成：单文件历史对比（基于 git/p4 CLI，优先 Git）
 
 ### 计划中 🚧
 - 快捷键
