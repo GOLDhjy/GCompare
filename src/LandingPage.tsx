@@ -22,12 +22,12 @@ export default function LandingPage() {
       <main>
         <section className="hero-section">
           <h1 className="hero-title">
-            Modern File Comparison<br />
-            for Developers
+            GCompare — Modern File Comparison<br />
+            for Everyone
           </h1>
           <p className="hero-subtitle">
-            A <span className="highlight">fast</span>, <span className="highlight">clean</span>, and <span className="highlight">cross-platform</span> diff tool built with Tauri and React.
-            Compare <span className="highlight">text</span>, <span className="highlight">files</span>, and <span className="highlight">git history</span> with ease.
+            GCompare is a <span className="highlight">fast</span>, <span className="highlight">clean</span>, and <span className="highlight">cross-platform</span> diff tool built with Tauri and React.
+            Compare <span className="highlight">text</span>, <span className="highlight">files</span>, and <span className="highlight">Git/P4 history</span> with ease.
           </p>
           <div className="cta-group">
             <a href={downloadUrl} className="btn btn-primary">
