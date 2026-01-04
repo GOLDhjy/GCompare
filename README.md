@@ -20,11 +20,18 @@ GCompare 是一个基于 Tauri v2 的跨平台文本/文件差异对比工具，
 - Inline / Side-by-side 切换
 - 差异导航（上一个 / 下一个）
 - 主题设置（系统 / 亮色 / 深色）
-- Git/P4 历史面板：提交/变更列表与单文件对比（基于 git/p4 CLI），点击可以固定面板在左侧
+- Git/P4/SVN 历史面板：提交/变更列表与单文件对比（基于 git/p4/svn CLI），点击可以固定面板在左侧
 - 支持编辑文件以及保存文件
 - 检查更新可以自动更新为新版，位于help里面
 
-![GCompare v0.2.0](./public/Images/v0.2.0.png)
+<p align="center">
+  <img src="./public/Images/v0.3.0.png" alt="GCompare v0.3.0" />
+</p>
+<p align="center"><sub>v0.3.0</sub></p>
+<p align="center">
+  <img src="./public/Images/v0.2.0.png" alt="GCompare v0.2.0" />
+</p>
+<p align="center"><sub>v0.2.0</sub></p>
 
 ## 下载
 请前往 Release 页面下载：  
@@ -36,7 +43,7 @@ https://github.com/GOLDhjy/GCompare/releases
 - 系统打开：将文件“用 GCompare 打开”
 - 视图切换：点击 Inline 开关
 - 差异导航：点击 ↑ / ↓ 按钮
-- Git/P4 历史：悬停左侧 History 标签，点击提交/变更进行对比（优先 Git）
+- Git/P4/SVN 历史：悬停左侧 History 标签，点击提交/变更进行对比（优先 Git）
 - 固定历史面板：点击面板按钮可以 Pin
 - 最近打开文件，在右侧可以打开并且固定
 
@@ -88,7 +95,7 @@ npm run tauri dev
 - Inline / Side-by-side 切换
 - 差异导航：上一个/下一个差异
 - 暗色/深色主题切换
-- Git/P4 集成：单文件历史对比（基于 git/p4 CLI，优先 Git）
+- Git/P4/SVN 集成：单文件历史对比（基于 git/p4/svn CLI，优先 Git）
 
 ### 计划中 🚧
 - 快捷键
