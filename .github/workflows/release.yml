@@ -19,6 +19,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -43,6 +46,30 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Generate release notes
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $tags = git tag --list 'v*' --sort=-v:refname
+          $prevTag = ($tags | Where-Object { $_ -ne $tag } | Select-Object -First 1)
+          $range = if ($prevTag) { "$prevTag..$tag" } else { $tag }
+          $log = git log --pretty=format:"- %s (%h)" $range
+          if (-not $log) {
+            $log = "- No changes listed."
+          }
+          $body = @"
+          ## 下载说明
+          - **macOS (Apple Silicon)**: `*.app.tar.gz` 或 `*.dmg`
+          - **Windows**: `*-setup.exe` 或 `*_en-US.msi`
+          - **Linux (Ubuntu/Debian)**: `*.deb`
+          - **Linux (Fedora/RHEL)**: `*.rpm`
+          - **Linux (通用)**: `*.AppImage`（体积较大，便携版）
+
+          ## Changelog
+          $log
+          "@
+          $body | Out-File -FilePath release-notes.md -Encoding utf8
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -52,12 +79,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "GCompare ${{ github.ref_name }}"
-          releaseBody: |
-            ## 下载说明
-            - **macOS (Apple Silicon)**: `*.app.tar.gz` 或 `*.dmg`
-            - **Windows**: `*-setup.exe` 或 `*_en-US.msi`
-            - **Linux (Ubuntu/Debian)**: `*.deb`
-            - **Linux (Fedora/RHEL)**: `*.rpm`
-            - **Linux (通用)**: `*.AppImage`（体积较大，便携版）
+          releaseBodyFile: release-notes.md
           releaseDraft: false
           prerelease: false
