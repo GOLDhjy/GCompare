@@ -66,6 +66,55 @@ struct VcsHistoryResult {
 #[derive(Default)]
 struct PendingOpenPaths(Mutex<Vec<String>>);
 
+#[derive(Default, Clone, serde::Deserialize)]
+struct P4Settings {
+    port: String,
+    user: String,
+    client: String,
+}
+
+impl P4Settings {
+    fn is_empty(&self) -> bool {
+        self.port.is_empty() && self.user.is_empty() && self.client.is_empty()
+    }
+}
+
+static GLOBAL_P4_SETTINGS: std::sync::OnceLock<Mutex<P4Settings>> = std::sync::OnceLock::new();
+
+fn get_global_p4_settings() -> P4Settings {
+    GLOBAL_P4_SETTINGS
+        .get_or_init(|| Mutex::new(P4Settings::default()))
+        .lock()
+        .map(|guard| guard.clone())
+        .unwrap_or_default()
+}
+
+fn set_global_p4_settings(settings: P4Settings) {
+    if let Some(mutex) = GLOBAL_P4_SETTINGS.get() {
+        if let Ok(mut guard) = mutex.lock() {
+            *guard = settings;
+        }
+    } else {
+        let _ = GLOBAL_P4_SETTINGS.set(Mutex::new(settings));
+    }
+}
+
+#[tauri::command]
+fn update_p4_settings(port: String, user: String, client: String) {
+    let settings = P4Settings {
+        port: port.trim().to_string(),
+        user: user.trim().to_string(),
+        client: client.trim().to_string(),
+    };
+    log::info!(
+        "P4 settings updated: port={}, user={}, client={}",
+        if settings.port.is_empty() { "(empty)" } else { &settings.port },
+        if settings.user.is_empty() { "(empty)" } else { &settings.user },
+        if settings.client.is_empty() { "(empty)" } else { &settings.client }
+    );
+    set_global_p4_settings(settings);
+}
+
 #[tauri::command]
 fn update_theme_menu(app: tauri::AppHandle, theme: String) {
     let menu = app
@@ -207,27 +256,50 @@ fn run_git(args: &[String], cwd: &Path) -> Result<String, String> {
 }
 
 fn apply_p4_env(command: &mut Command, cwd: &Path) {
-    let env_config = std::env::var("P4CONFIG")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-    let config_info = if env_config.is_some() {
-        None
-    } else {
-        find_p4config_info(cwd)
-    };
-    if let Some(info) = &config_info {
+    // 1. 首先尝试在目录层级中查找 p4config 文件（最精确，与文件路径相关）
+    if let Some(info) = find_p4config_info(cwd) {
         command.env("P4CONFIG", &info.name);
         log::info!(
             "P4CONFIG resolved name={} path={}",
             info.name,
             info.path.display()
         );
-    } else if let Some(config) = &env_config {
-        log::info!("P4CONFIG already set to {config}");
-    } else {
-        log::info!("P4CONFIG not set and no local config found from {}", cwd.display());
+        return;
     }
+
+    // 2. 然后使用 UI 中配置的备用设置（用户主动为当前场景配置的）
+    let global_settings = get_global_p4_settings();
+    if !global_settings.is_empty() {
+        if !global_settings.port.is_empty() {
+            command.env("P4PORT", &global_settings.port);
+        }
+        if !global_settings.user.is_empty() {
+            command.env("P4USER", &global_settings.user);
+        }
+        if !global_settings.client.is_empty() {
+            command.env("P4CLIENT", &global_settings.client);
+        }
+        log::info!(
+            "P4 env from UI settings: port={}, user={}, client={}",
+            if global_settings.port.is_empty() { "(not set)" } else { &global_settings.port },
+            if global_settings.user.is_empty() { "(not set)" } else { &global_settings.user },
+            if global_settings.client.is_empty() { "(not set)" } else { &global_settings.client }
+        );
+        return;
+    }
+
+    // 3. 最后检查系统环境变量 P4CONFIG（可能是其他项目留下的全局配置）
+    let env_config = std::env::var("P4CONFIG")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    if let Some(config) = &env_config {
+        log::info!("P4CONFIG from system env: {config}");
+        return;
+    }
+
+    log::info!("No P4 config found from {} (no local p4config, no UI settings, no P4CONFIG env)", cwd.display());
 }
 
 fn log_p4_info_for_path(path: &str) {
@@ -1278,6 +1350,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             update_theme_menu,
+            update_p4_settings,
             restart_app,
             consume_open_paths,
             git_history,

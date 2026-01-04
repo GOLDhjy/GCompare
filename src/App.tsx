@@ -135,7 +135,7 @@ const getPathParts = (path: string): PathParts => {
 };
 
 function App() {
-  const { settings, updateTheme, updateViewMode } = useSettings();
+  const { settings, updateTheme, updateViewMode, updateP4Settings } = useSettings();
   const systemTheme = useSystemTheme();
   const [updateBusy, setUpdateBusy] = useState(false);
   const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
@@ -187,6 +187,19 @@ function App() {
   const [recentsPinned, setRecentsPinned] = useState(false);
   const [diffChanges, setDiffChanges] = useState<LineChange[]>([]);
   const [diffIndex, setDiffIndex] = useState(0);
+  const [p4SettingsOpen, setP4SettingsOpen] = useState(false);
+  const [p4PortInput, setP4PortInput] = useState("");
+  const [p4UserInput, setP4UserInput] = useState("");
+  const [p4ClientInput, setP4ClientInput] = useState("");
+
+  // 同步 P4 设置输入框的值
+  useEffect(() => {
+    if (settings.p4) {
+      setP4PortInput(settings.p4.port || "");
+      setP4UserInput(settings.p4.user || "");
+      setP4ClientInput(settings.p4.client || "");
+    }
+  }, [settings.p4]);
 
   const originalIsFile = Boolean(originalPath && !isVirtualPath(originalPath));
   const modifiedIsFile = Boolean(modifiedPath && !isVirtualPath(modifiedPath));
@@ -930,17 +943,18 @@ function App() {
                   <div className="history-panel-header">
                     <div className="history-panel-title">
                       <span className="history-title">History</span>
-                      <span className="history-subtitle">
-                        {historyRelativePath
-                          ? `File: ${historyRelativePath}`
-                          : historyProvider === "git"
-                            ? "Git history"
-                            : historyProvider === "p4"
-                              ? "P4 history"
-                              : historyProvider === "svn"
-                                ? "SVN history"
-                              : "History"}
-                      </span>
+                      <button
+                        type="button"
+                        className="p4-settings-toggle"
+                        onClick={() => setP4SettingsOpen(!p4SettingsOpen)}
+                        title="P4 connection settings (fallback when no p4config)"
+                      >
+                        <span className={`p4-settings-arrow${p4SettingsOpen ? " is-open" : ""}`}>▶</span>
+                        <span>P4</span>
+                        {(settings.p4?.port || settings.p4?.user || settings.p4?.client) && (
+                          <span className="p4-settings-badge">●</span>
+                        )}
+                      </button>
                     </div>
                     <div className="history-panel-actions">
                       <button
@@ -953,6 +967,75 @@ function App() {
                       </button>
                     </div>
                   </div>
+                  {p4SettingsOpen && (
+                    <div className="p4-settings-form">
+                      <p className="p4-settings-hint">
+                        Fallback P4 connection when no p4config file is present.
+                      </p>
+                      <label className="p4-setting-field">
+                        <span>P4PORT</span>
+                        <input
+                          type="text"
+                          placeholder="e.g. ssl:perforce:1666"
+                          value={p4PortInput}
+                          onChange={(e) => setP4PortInput(e.target.value)}
+                        />
+                      </label>
+                      <label className="p4-setting-field">
+                        <span>P4USER</span>
+                        <input
+                          type="text"
+                          placeholder="username"
+                          value={p4UserInput}
+                          onChange={(e) => setP4UserInput(e.target.value)}
+                        />
+                      </label>
+                      <label className="p4-setting-field">
+                        <span>P4CLIENT</span>
+                        <input
+                          type="text"
+                          placeholder="workspace name"
+                          value={p4ClientInput}
+                          onChange={(e) => setP4ClientInput(e.target.value)}
+                        />
+                      </label>
+                      <div className="p4-settings-actions">
+                        <button
+                          type="button"
+                          className="p4-settings-save"
+                          onClick={() => {
+                            void updateP4Settings({
+                              port: p4PortInput,
+                              user: p4UserInput,
+                              client: p4ClientInput,
+                            }).then(() => {
+                              showStatus("P4 settings saved");
+                            });
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="p4-settings-clear"
+                          onClick={() => {
+                            setP4PortInput("");
+                            setP4UserInput("");
+                            setP4ClientInput("");
+                            void updateP4Settings({
+                              port: "",
+                              user: "",
+                              client: "",
+                            }).then(() => {
+                              showStatus("P4 settings cleared");
+                            });
+                          }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="history-controls">
                     <label className="history-control">
                       <span>Source</span>
