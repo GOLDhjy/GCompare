@@ -19,9 +19,12 @@ GCompare 是一个基于 Tauri v2 的跨平台文本/文件差异对比工具，
 - 系统“打开方式”关联（常见文本/代码扩展名）
 - Inline / Side-by-side 切换
 - 差异导航（上一个 / 下一个）
+- Blame 模式（Git/P4/SVN 行级归因）
 - 主题设置（系统 / 亮色 / 深色）
-- Git/P4/SVN 历史面板：提交/变更列表与单文件对比（基于 git/p4/svn CLI），点击可以固定面板在左侧- P4 连接设置：当没有 p4config 文件时，可在 History 面板配置 P4PORT/P4USER/P4CLIENT 作为备用连接- 支持编辑文件以及保存文件
-- 检查更新可以自动更新为新版，位于help里面
+- Git/P4/SVN 历史面板：提交/变更列表与单文件对比（基于 git/p4/svn CLI），点击可以固定面板在左侧
+- P4 连接设置：当没有 p4config 文件时，可在 History 面板配置 P4PORT/P4USER/P4CLIENT 作为备用连接
+- 支持编辑文件以及保存文件
+- 检查更新可以自动更新为新版，位于 help 里面
 
 <p align="center">
   <img src="./public/Images/v0.3.0.png" alt="GCompare v0.3.0" />
@@ -42,6 +45,7 @@ https://github.com/GOLDhjy/GCompare/releases
 - 系统打开：将文件“用 GCompare 打开”
 - 视图切换：点击 Inline 开关
 - 差异导航：点击 ↑ / ↓ 按钮
+- Blame 模式：点击 Blame 开关查看行级归因
 - Git/P4/SVN 历史：悬停左侧 History 标签，点击提交/变更进行对比（优先 Git）
 - P4 设置：点击 History 面板标题旁的 P4 按钮，可配置备用 P4 连接（当项目无 p4config 文件时使用）
 - 固定历史面板：点击面板按钮可以 Pin
@@ -104,6 +108,7 @@ npm run tauri dev
 - 系统"打开方式"关联（常见文本/代码扩展名）
 - Inline / Side-by-side 切换
 - 差异导航：上一个/下一个差异
+- Blame 模式：行级归因（基于 git/p4/svn CLI）
 - 暗色/深色主题切换
 - Git/P4/SVN 集成：单文件历史对比（基于 git/p4/svn CLI，优先 Git）
 
