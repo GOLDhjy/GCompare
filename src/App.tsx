@@ -141,6 +141,7 @@ function App() {
   const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
   const diffListenersRef = useRef<Array<{ dispose: () => void }>>([]);
   const focusedSideRef = useRef<EditorSide | null>(null);
+  const initialPathsConsumedRef = useRef(false);
   const updateProgressRef = useRef<{ total?: number; done: number }>({
     total: undefined,
     done: 0,
@@ -788,9 +789,15 @@ function App() {
         }
       });
 
-      const initial = await invoke<string[]>("consume_open_paths");
-      if (active && Array.isArray(initial) && initial.length > 0) {
-        enqueueOpenPaths(initial);
+      // Only consume initial paths once to avoid race conditions with StrictMode
+      // Note: we check initialPathsConsumedRef before the async operation to prevent double consumption
+      if (!initialPathsConsumedRef.current) {
+        initialPathsConsumedRef.current = true;
+        const initial = await invoke<string[]>("consume_open_paths");
+        // Don't check 'active' here - we want to process initial paths even if effect re-runs
+        if (Array.isArray(initial) && initial.length > 0) {
+          enqueueOpenPaths(initial);
+        }
       }
     };
 

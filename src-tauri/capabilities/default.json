@@ -11,6 +11,7 @@
     "dialog:default",
     "fs:default",
     "fs:allow-applog-write",
+    "fs:allow-read",
     "store:default",
     "store:allow-load",
     "store:allow-save",
@@ -22,6 +23,9 @@
       "allow": [
         {
           "path": "$HOME/**"
+        },
+        {
+          "path": "$TEMP/**"
         },
         {
           "path": "C:/**"
@@ -43,6 +47,9 @@
         },
         {
           "path": "/Volumes/**"
+        },
+        {
+          "path": "**"
         }
       ]
     }

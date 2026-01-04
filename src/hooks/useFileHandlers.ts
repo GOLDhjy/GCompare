@@ -25,6 +25,7 @@ export const useFileHandlers = ({
   const pathStateRef = useRef({ original: false, modified: false });
   const openQueueRef = useRef<string[]>([]);
   const openQueueTimerRef = useRef<number | null>(null);
+  const applyPathsRef = useRef<((paths: string[], source: "drop" | "open", preferredSide?: Side) => Promise<void>) | null>(null);
 
   useEffect(() => {
     return () => {
@@ -74,7 +75,7 @@ export const useFileHandlers = ({
       }
       return { ok: true, size: bytes.length };
     } catch (error) {
-      console.error(error);
+      console.error(`Failed to load file: ${path}`, error);
       return { ok: false, size: 0 };
     }
   }, []);
@@ -166,6 +167,11 @@ export const useFileHandlers = ({
     [largeFileThreshold, loadFileToSide, reserveSide, resolveOpenSide, showStatus],
   );
 
+  // Keep a ref to the latest applyPaths to avoid stale closure in setTimeout
+  useEffect(() => {
+    applyPathsRef.current = applyPaths;
+  }, [applyPaths]);
+
   const flushOpenQueue = useCallback(() => {
     const pending = openQueueRef.current;
     openQueueRef.current = [];
@@ -173,10 +179,10 @@ export const useFileHandlers = ({
       window.clearTimeout(openQueueTimerRef.current);
       openQueueTimerRef.current = null;
     }
-    if (pending.length > 0) {
-      void applyPaths(pending, "open");
+    if (pending.length > 0 && applyPathsRef.current) {
+      void applyPathsRef.current(pending, "open");
     }
-  }, [applyPaths]);
+  }, []);
 
   const enqueueOpenPaths = useCallback(
     (paths: string[]) => {

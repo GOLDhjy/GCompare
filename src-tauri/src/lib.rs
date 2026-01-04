@@ -116,37 +116,59 @@ fn consume_open_paths(state: tauri::State<PendingOpenPaths>) -> Vec<String> {
     paths
 }
 
-fn collect_startup_paths() -> Vec<String> {
-    std::env::args_os()
-        .skip(1)
-        .filter_map(|arg| {
-            let path = std::path::PathBuf::from(arg);
+fn canonicalize_path(path: &std::path::Path) -> Option<String> {
+    // Try to canonicalize to convert 8.3 short paths to long paths
+    match path.canonicalize() {
+        Ok(canonical) => {
+            let path_str = canonical.to_string_lossy().to_string();
+            // Remove Windows extended-length path prefix (\\?\)
+            let normalized = if path_str.starts_with(r"\\?\") {
+                path_str[4..].to_string()
+            } else {
+                path_str
+            };
+            Some(normalized)
+        }
+        Err(_) => {
+            // Fallback to original path if canonicalization fails
             if path.is_file() {
                 Some(path.to_string_lossy().to_string())
             } else {
                 None
             }
+        }
+    }
+}
+
+fn collect_startup_paths() -> Vec<String> {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    let paths: Vec<String> = args
+        .iter()
+        .filter_map(|arg| {
+            let path = std::path::PathBuf::from(arg);
+            canonicalize_path(&path)
         })
-        .collect()
+        .collect();
+    log::info!("startup args={args:?} paths={paths:?}");
+    paths
 }
 
 fn collect_cli_paths(args: Vec<String>) -> Vec<String> {
     let exe_path = std::env::current_exe().ok();
-    args.into_iter()
+    let paths: Vec<String> = args
+        .iter()
         .filter_map(|arg| {
             let path = PathBuf::from(&arg);
-            if path.is_file() {
-                if let Some(exe) = exe_path.as_ref() {
-                    if *exe == path {
-                        return None;
-                    }
+            if let Some(exe) = exe_path.as_ref() {
+                if path.canonicalize().ok().as_ref() == Some(exe) || path == *exe {
+                    return None;
                 }
-                Some(path.to_string_lossy().to_string())
-            } else {
-                None
             }
+            canonicalize_path(&path)
         })
-        .collect()
+        .collect();
+    log::info!("single instance args={args:?} paths={paths:?}");
+    paths
 }
 
 fn append_boot_log(message: &str) {
@@ -1236,7 +1258,6 @@ pub fn run() {
         .setup({
             let start = Arc::clone(&start);
             move |app| {
-            log::info!("setup start");
             append_boot_log(&format!(
                 "setup start at {}ms",
                 start.elapsed().as_millis()
@@ -1245,9 +1266,8 @@ pub fn run() {
             if !startup_paths.is_empty() {
                 let state = app.state::<PendingOpenPaths>();
                 let mut pending = state.0.lock().expect("pending open paths lock");
-                pending.extend(startup_paths);
+                pending.extend(startup_paths.clone());
             }
-            log::info!("setup end");
             append_boot_log(&format!(
                 "setup end at {}ms",
                 start.elapsed().as_millis()
