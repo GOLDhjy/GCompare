@@ -1050,13 +1050,11 @@ function App() {
                       ) : (
                         recentFiles.map((path) => {
                           const parts = getPathParts(path);
-                          const isActive =
-                            path === originalPath || path === modifiedPath;
                           return (
                             <button
                               key={path}
                               type="button"
-                              className={`recent-item${isActive ? " is-active" : ""}`}
+                              className="recent-item"
                               onClick={() => handleOpenRecentFile(path)}
                               title={parts.full}
                             >
