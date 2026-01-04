@@ -2,12 +2,6 @@
 
 感谢您对 GCompare 的关注和支持！如果您觉得这个项目对您有帮助，欢迎通过以下方式赞助。
 
-## GitHub Sponsors
-
-[![Sponsor](https://img.shields.io/badge/Sponsor-GitHub-white?logo=github&style=for-the-badge)](https://github.com/sponsors/GOLDhjy)
-
-点击上方按钮，通过 GitHub Sponsors 赞助支持。支持信用卡和 PayPal。
-
 ## PayPal
 
 如果你更习惯 PayPal，可以使用以下链接赞助：
