@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DiffEditor, loader, type MonacoDiffEditor } from "@monaco-editor/react";
+import { DiffEditor, Editor, loader, type MonacoDiffEditor } from "@monaco-editor/react";
+import type { editor as MonacoEditorType } from "monaco-editor";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -13,6 +14,7 @@ import { useStatusMessage } from "./hooks/useStatusMessage";
 import { useSettings } from "./hooks/useSettings";
 import { useSystemTheme } from "./hooks/useSystemTheme";
 import { getMonacoTheme } from "./utils/monacoTheme";
+import type { BlameResult } from "./types/blame";
 import "./App.css";
 
 const appStart = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -139,6 +141,7 @@ function App() {
   const systemTheme = useSystemTheme();
   const [updateBusy, setUpdateBusy] = useState(false);
   const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
+  const blameEditorRef = useRef<MonacoEditorType.IStandaloneCodeEditor | null>(null);
   const diffListenersRef = useRef<Array<{ dispose: () => void }>>([]);
   const focusedSideRef = useRef<EditorSide | null>(null);
   const initialPathsConsumedRef = useRef(false);
@@ -191,6 +194,15 @@ function App() {
   const [p4PortInput, setP4PortInput] = useState("");
   const [p4UserInput, setP4UserInput] = useState("");
   const [p4ClientInput, setP4ClientInput] = useState("");
+
+  // Blame 模式状态
+  const [blameMode, setBlameMode] = useState(false);
+  const [blameData, setBlameData] = useState<BlameResult | null>(null);
+  const [blameBusy, setBlameBusy] = useState(false);
+  const [blameContent, setBlameContent] = useState<string>("");
+  const [blameFilePath, setBlameFilePath] = useState<string | null>(null);
+  const blameDecorationsRef = useRef<string[]>([]);
+  const blameMapRef = useRef<Map<number, { author: string; hash: string; timestamp: number; summary: string }>>(new Map());
 
   // 同步 P4 设置输入框的值
   useEffect(() => {
@@ -574,6 +586,221 @@ function App() {
     }
   }, [formatInvokeError, historyEntries.length, historyError, historyTargetPath, showStatus]);
 
+  // Fetch blame data for the current file
+  const fetchBlame = useCallback(async (
+    filePath: string,
+    options?: { commit?: string; repoRoot?: string; provider?: string }
+  ) => {
+    setBlameBusy(true);
+    try {
+      const result = await invoke<BlameResult>("vcs_blame", {
+        path: filePath,
+        commit: options?.commit,
+        repoRoot: options?.repoRoot,
+        provider: options?.provider,
+      });
+      console.log("Blame result:", result);
+      setBlameData(result);
+      if (result.entries.length > 0) {
+        showStatus(`Blame loaded: ${result.entries.length} lines from ${result.provider}`, 3000);
+      }
+    } catch (error) {
+      console.warn("Blame failed:", error);
+      setBlameData(null);
+      blameMapRef.current = new Map();
+      showStatus(`Blame unavailable: ${formatInvokeError(error)}`, 5000);
+    } finally {
+      setBlameBusy(false);
+    }
+  }, [formatInvokeError, showStatus]);
+
+  // Apply blame decorations to the standalone blame editor
+  const applyBlameDecorations = useCallback(() => {
+    console.log("applyBlameDecorations called, blameData:", blameData?.entries.length);
+    
+    const editor = blameEditorRef.current;
+    if (!editor || !blameData) {
+      console.log("No blame editor or blameData");
+      return;
+    }
+
+    const monaco = (window as unknown as { monaco?: typeof import("monaco-editor") }).monaco;
+    if (!monaco) {
+      console.log("No monaco");
+      return;
+    }
+
+    console.log("Applying", blameData.entries.length, "blame decorations");
+
+    // Clear old decorations
+    blameDecorationsRef.current = editor.deltaDecorations(
+      blameDecorationsRef.current,
+      []
+    );
+
+    // Create a map for quick lookup by line number and store in ref
+    const blameMap = new Map<number, { author: string; hash: string; timestamp: number; summary: string }>();
+    for (const entry of blameData.entries) {
+      blameMap.set(entry.line, {
+        author: entry.author,
+        hash: entry.hash,
+        timestamp: entry.timestamp,
+        summary: entry.summary,
+      });
+    }
+    blameMapRef.current = blameMap;
+
+    // Create decorations with glyph margin for visual indicator
+    const decorations: import("monaco-editor").editor.IModelDeltaDecoration[] = [];
+    
+    let lastAuthor = "";
+    for (const entry of blameData.entries) {
+      const isNewAuthor = entry.author !== lastAuthor;
+      lastAuthor = entry.author;
+
+      const shortHash = entry.hash.length > 7 ? entry.hash.slice(0, 7) : entry.hash;
+      const hoverContent = [
+        `**${entry.author}**`,
+        `\`${shortHash}\``,
+        entry.summary ? `_${entry.summary}_` : "",
+        formatCommitTime(entry.timestamp),
+      ].filter(Boolean).join("\n\n");
+
+      decorations.push({
+        range: new monaco.Range(entry.line, 1, entry.line, 1),
+        options: {
+          isWholeLine: true,
+          glyphMarginClassName: isNewAuthor ? "blame-glyph-marker" : undefined,
+          glyphMarginHoverMessage: { value: hoverContent, isTrusted: true },
+          className: isNewAuthor ? "blame-line-highlight" : undefined,
+        },
+      });
+    }
+
+    blameDecorationsRef.current = editor.deltaDecorations([], decorations);
+    console.log("Decorations applied, count:", blameDecorationsRef.current.length);
+  }, [blameData]);
+
+  // Stable line numbers function that reads from ref
+  const blameLineNumbers = useCallback((lineNumber: number): string => {
+    const blameMap = blameMapRef.current;
+    const entry = blameMap.get(lineNumber);
+    if (entry) {
+      const prevEntry = blameMap.get(lineNumber - 1);
+      const isNewAuthor = !prevEntry || prevEntry.author !== entry.author;
+      if (isNewAuthor) {
+        const author = entry.author.length > 8 ? entry.author.slice(0, 8) : entry.author;
+        return `${author.padEnd(8)} ${lineNumber}`;
+      }
+    }
+    return `${"".padEnd(8)} ${lineNumber}`;
+  }, []);
+
+  // Handle blame editor mount
+  const handleBlameEditorMount = useCallback((editor: MonacoEditorType.IStandaloneCodeEditor) => {
+    blameEditorRef.current = editor;
+    console.log("Blame editor mounted, blameContent length:", blameContent.length);
+    
+    // Set content manually to avoid the controlled value clearing decorations
+    const model = editor.getModel();
+    if (model && blameContent) {
+      model.setValue(blameContent);
+    }
+    
+    // Apply decorations after a short delay to ensure model is ready
+    if (blameData) {
+      setTimeout(() => applyBlameDecorations(), 100);
+    }
+  }, [blameContent, blameData, applyBlameDecorations]);
+
+  // Update blame editor content when blameContent changes (e.g., switching history)
+  useEffect(() => {
+    const editor = blameEditorRef.current;
+    if (editor && blameMode && blameContent) {
+      const model = editor.getModel();
+      if (model) {
+        const currentValue = model.getValue();
+        if (currentValue !== blameContent) {
+          console.log("Updating blame editor content");
+          model.setValue(blameContent);
+          // Force re-render of line numbers by toggling the option
+          editor.updateOptions({ lineNumbers: "on" });
+          setTimeout(() => {
+            editor.updateOptions({ lineNumbers: blameLineNumbers });
+          }, 10);
+        }
+      }
+    }
+  }, [blameMode, blameContent, blameLineNumbers]);
+
+  // Toggle blame mode
+  const toggleBlameMode = useCallback(async () => {
+    if (blameMode) {
+      // Turning off blame mode
+      setBlameMode(false);
+      setBlameData(null);
+      setBlameContent("");
+      setBlameFilePath(null);
+      blameMapRef.current = new Map();
+    } else {
+      // Turning on blame mode
+      // Priority: historyTargetPath (the file being viewed in history) > modifiedPath > originalPath
+      const targetPath = historyTargetPath 
+        ? historyTargetPath
+        : modifiedPath && !isVirtualPath(modifiedPath) 
+          ? modifiedPath 
+          : originalPath && !isVirtualPath(originalPath)
+            ? originalPath
+            : null;
+
+      if (!targetPath) {
+        showStatus("Open a file to use Blame mode", 3000);
+        return;
+      }
+
+      console.log("Blame target path:", targetPath);
+      
+      // Load the file content for the standalone blame editor
+      try {
+        const content = await readTextFile(targetPath);
+        setBlameContent(content);
+        setBlameFilePath(targetPath);
+      } catch (e) {
+        console.warn("Failed to load file for blame:", e);
+        showStatus("Failed to load file for blame", 3000);
+        return;
+      }
+      
+      setBlameMode(true);
+      await fetchBlame(targetPath);
+    }
+  }, [blameMode, historyTargetPath, modifiedPath, originalPath, fetchBlame, showStatus]);
+
+  // Apply decorations when blame data changes or editor mounts
+  useEffect(() => {
+    if (blameMode && blameData) {
+      // Check if editor is ready, if not, retry with increasing delays
+      const tryApply = (attempt: number) => {
+        const editor = blameEditorRef.current;
+        if (editor) {
+          console.log("Blame editor ready, applying decorations (attempt", attempt, ")");
+          applyBlameDecorations();
+        } else if (attempt < 15) {
+          // Retry with exponential backoff
+          const delay = Math.min(100 * Math.pow(1.3, attempt), 500);
+          console.log("Blame editor not ready, retrying in", delay, "ms (attempt", attempt, ")");
+          setTimeout(() => tryApply(attempt + 1), delay);
+        } else {
+          console.warn("Failed to apply blame decorations after 15 attempts");
+        }
+      };
+      
+      // Small initial delay to let editor mount
+      const timer = setTimeout(() => tryApply(0), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [blameMode, blameData, applyBlameDecorations]);
+
   const handleCompareCommit = useCallback(
     async (entry: HistoryEntry) => {
       if (entry.deleted) {
@@ -628,10 +855,28 @@ function App() {
           setSideContent("original", content, commitLabel);
         }
 
-        showStatus(
-          `Comparing with ${displayId}.${overwroteOtherSide ? " Replaced the other side." : ""}`,
-          2600,
-        );
+        // In blame mode, update the blame content and fetch blame for that commit
+        if (blameMode) {
+          setBlameContent(content);
+          // Fetch blame for the historical version
+          if (entry.provider === "git") {
+            // For git, we can get blame for specific commits
+            await fetchBlame(entry.path, {
+              commit: entry.hash,
+              repoRoot: historyRepoRoot || undefined,
+              provider: "git",
+            });
+          } else {
+            // For P4/SVN, clear blame data as we can't get historical blame easily
+            setBlameData(null);
+            blameMapRef.current = new Map();
+          }
+        } else {
+          showStatus(
+            `Comparing with ${displayId}.${overwroteOtherSide ? " Replaced the other side." : ""}`,
+            2600,
+          );
+        }
       } catch (error) {
         console.error(error);
         const message = formatInvokeError(error);
@@ -641,6 +886,7 @@ function App() {
       }
     },
     [
+      blameMode,
       historyRepoRoot,
       historySourceSide,
       historyTargetPath,
@@ -911,6 +1157,28 @@ function App() {
               </span>
             </button>
           </div>
+          <div className="toggle">
+            <button
+              className={`toggle-switch${blameMode ? " active" : ""}`}
+              onClick={() => void toggleBlameMode()}
+              type="button"
+              aria-pressed={blameMode}
+              disabled={blameBusy}
+            >
+              <span className="toggle-text">
+                Blame
+              </span>
+              <span className="toggle-state">{blameMode ? "On" : "Off"}</span>
+              <span className="toggle-track" aria-hidden="true">
+                <span className="toggle-knob" />
+              </span>
+            </button>
+            {blameMode && blameFilePath && (
+              <span className="blame-file-label" title={blameFilePath}>
+                {getPathParts(blameFilePath).name}
+              </span>
+            )}
+          </div>
         </header>
         <div className="workspace">
           <div
@@ -1104,26 +1372,54 @@ function App() {
               ) : null}
             </aside>
           </div>
-          <section className="diff-panel" aria-label="Diff editor">
-            <DiffEditor
-              original={originalText}
-              modified={modifiedText}
-              language="markdown"
-              theme={getMonacoTheme(effectiveTheme)}
-              onMount={handleDiffMount}
-              options={{
-                renderSideBySide: sideBySide,
-                useInlineViewWhenSpaceIsLimited: false,
-                readOnly: false,
-                originalEditable: true,
-                minimap: { enabled: false },
-                renderOverviewRuler: false,
-                lineNumbers: "on",
-                fontFamily: editorFontFamily,
-                fontSize: editorFontSize,
-                wordWrap: "on",
-              }}
-            />
+          <section className="diff-panel" aria-label={blameMode ? "Blame view" : "Diff editor"}>
+            {blameMode ? (
+              blameFilePath && (
+                <Editor
+                  key={`blame-${blameFilePath}`}
+                  defaultValue=""
+                  language="markdown"
+                  theme={getMonacoTheme(effectiveTheme)}
+                  onMount={handleBlameEditorMount}
+                  keepCurrentModel={true}
+                  options={{
+                    readOnly: true,
+                    minimap: { enabled: false },
+                    overviewRulerLanes: 0,
+                    lineNumbers: blameLineNumbers,
+                    lineNumbersMinChars: 15,
+                    glyphMargin: true,
+                    fontFamily: editorFontFamily,
+                    fontSize: editorFontSize,
+                    wordWrap: "off",
+                    scrollBeyondLastLine: false,
+                    fixedOverflowWidgets: true,
+                  }}
+                />
+              )
+            ) : (
+              <DiffEditor
+                original={originalText}
+                modified={modifiedText}
+                language="markdown"
+                theme={getMonacoTheme(effectiveTheme)}
+                onMount={handleDiffMount}
+                keepCurrentOriginalModel={true}
+                keepCurrentModifiedModel={true}
+                options={{
+                  renderSideBySide: sideBySide,
+                  useInlineViewWhenSpaceIsLimited: false,
+                  readOnly: false,
+                  originalEditable: true,
+                  minimap: { enabled: false },
+                  renderOverviewRuler: false,
+                  lineNumbers: "on",
+                  fontFamily: editorFontFamily,
+                  fontSize: editorFontSize,
+                  wordWrap: "on",
+                }}
+              />
+            )}
           </section>
           <div
             className={`recent-shell${recentsVisible ? " is-open" : ""}${recentsPinned ? " is-pinned" : ""}`}

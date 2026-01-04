@@ -576,6 +576,373 @@ fn to_git_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+// ===== Blame types and implementations =====
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct BlameEntry {
+    line: usize,
+    hash: String,
+    author: String,
+    timestamp: i64,
+    summary: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlameResult {
+    provider: String,
+    entries: Vec<BlameEntry>,
+}
+
+fn git_blame_blocking(path: String, commit: Option<String>, repo_root_override: Option<String>) -> Result<BlameResult, String> {
+    log::info!("Git blame: starting for {} commit={:?}", path, commit);
+    
+    let (repo_root, relative_path) = if let Some(root) = repo_root_override {
+        // Use provided repo root and path is already relative
+        (PathBuf::from(root), path.clone())
+    } else {
+        let file_path = PathBuf::from(&path);
+        if !file_path.is_file() {
+            return Err("Path is not a file.".to_string());
+        }
+        let parent = file_path
+            .parent()
+            .ok_or_else(|| "Invalid file path.".to_string())?;
+
+        let repo_root_output =
+            run_git(&vec!["rev-parse".into(), "--show-toplevel".into()], parent)?;
+        let repo_root_line = repo_root_output
+            .lines()
+            .next()
+            .ok_or_else(|| "Unable to resolve repository root.".to_string())?;
+        let repo_root = PathBuf::from(repo_root_line.trim());
+
+        log::info!("Git blame: repo root = {}", repo_root.display());
+
+        let relative_path = file_path
+            .strip_prefix(&repo_root)
+            .map_err(|_| "File is not inside the repository.".to_string())?;
+        (repo_root, to_git_path(relative_path))
+    };
+
+    log::info!("Git blame: running git blame for {}", relative_path);
+
+    // git blame --porcelain gives machine-readable output
+    // If commit is specified, blame that specific commit
+    let mut args = vec![
+        "blame".into(),
+        "--porcelain".into(),
+    ];
+    if let Some(ref c) = commit {
+        args.push(c.clone());
+    }
+    args.push("--".into());
+    args.push(relative_path);
+    
+    let blame_output = run_git(&args, &repo_root)?;
+
+    log::info!("Git blame: output lines = {}", blame_output.lines().count());
+
+    let mut entries: Vec<BlameEntry> = Vec::new();
+    let mut current_hash = String::new();
+    let mut current_author = String::new();
+    let mut current_timestamp: i64 = 0;
+    let mut current_summary = String::new();
+    let mut line_number: usize = 0;
+
+    // Cache commit info to avoid reparsing
+    let mut commit_cache: std::collections::HashMap<String, (String, i64, String)> =
+        std::collections::HashMap::new();
+
+    for line in blame_output.lines() {
+        if line.starts_with('\t') {
+            // This is the actual content line, meaning we have a complete entry
+            line_number += 1;
+            entries.push(BlameEntry {
+                line: line_number,
+                hash: current_hash.clone(),
+                author: current_author.clone(),
+                timestamp: current_timestamp,
+                summary: current_summary.clone(),
+            });
+        } else if line.len() >= 40 && line.chars().take(40).all(|c| c.is_ascii_hexdigit()) {
+            // This is a commit hash line
+            let hash = &line[..40];
+            current_hash = hash.to_string();
+
+            // Check if we have cached info for this commit
+            if let Some((author, ts, summary)) = commit_cache.get(hash) {
+                current_author = author.clone();
+                current_timestamp = *ts;
+                current_summary = summary.clone();
+            }
+        } else if let Some(author) = line.strip_prefix("author ") {
+            current_author = author.to_string();
+            commit_cache
+                .entry(current_hash.clone())
+                .or_insert_with(|| (current_author.clone(), 0, String::new()))
+                .0 = current_author.clone();
+        } else if let Some(time) = line.strip_prefix("author-time ") {
+            if let Ok(ts) = time.parse::<i64>() {
+                current_timestamp = ts;
+                commit_cache
+                    .entry(current_hash.clone())
+                    .or_insert_with(|| (String::new(), ts, String::new()))
+                    .1 = ts;
+            }
+        } else if let Some(summary) = line.strip_prefix("summary ") {
+            current_summary = summary.to_string();
+            commit_cache
+                .entry(current_hash.clone())
+                .or_insert_with(|| (String::new(), 0, current_summary.clone()))
+                .2 = current_summary.clone();
+        }
+    }
+
+    log::info!("Git blame: returning {} entries", entries.len());
+
+    Ok(BlameResult {
+        provider: "git".to_string(),
+        entries,
+    })
+}
+
+fn p4_blame_blocking(path: String) -> Result<BlameResult, String> {
+    let file_path = PathBuf::from(&path);
+    if !file_path.is_file() {
+        return Err("Path is not a file.".to_string());
+    }
+    let parent = file_path
+        .parent()
+        .ok_or_else(|| "Invalid file path.".to_string())?;
+
+    log::info!("P4 blame: running p4 annotate for {}", path);
+
+    // p4 annotate -c shows changelist numbers
+    let output = run_p4(
+        &vec!["annotate".into(), "-c".into(), path.clone()],
+        parent,
+    )?;
+
+    log::info!("P4 annotate output lines: {}", output.lines().count());
+
+    // Collect unique changelists
+    let mut changelists: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for line in output.lines() {
+        // Format: "changelist: content"
+        if let Some(cl) = line.split(':').next() {
+            let cl = cl.trim();
+            if !cl.is_empty() && cl.chars().all(|c| c.is_ascii_digit()) {
+                changelists.insert(cl.to_string());
+            }
+        }
+    }
+
+    // Get describe info for all changelists
+    let mut cl_info: std::collections::HashMap<String, (String, i64, String)> =
+        std::collections::HashMap::new();
+
+    for cl in &changelists {
+        if let Ok(describe) = run_p4(
+            &vec!["describe".into(), "-s".into(), cl.clone()],
+            parent,
+        ) {
+            let mut author = String::new();
+            let mut timestamp: i64 = 0;
+            let mut summary = String::new();
+
+            for desc_line in describe.lines() {
+                if desc_line.starts_with("Change") && desc_line.contains(" by ") {
+                    // "Change 12345 by user@client on 2024/01/01 12:00:00"
+                    if let Some(by_part) = desc_line.split(" by ").nth(1) {
+                        if let Some(user) = by_part.split('@').next() {
+                            author = user.to_string();
+                        }
+                        // Parse date
+                        if let Some(on_part) = by_part.split(" on ").nth(1) {
+                            // Try to parse P4 date format
+                            if let Ok(dt) = time::PrimitiveDateTime::parse(
+                                on_part.trim(),
+                                time::macros::format_description!(
+                                    "[year]/[month]/[day] [hour]:[minute]:[second]"
+                                ),
+                            ) {
+                                timestamp = dt.assume_utc().unix_timestamp();
+                            }
+                        }
+                    }
+                } else if desc_line.starts_with('\t') && summary.is_empty() {
+                    summary = desc_line.trim().to_string();
+                }
+            }
+
+            cl_info.insert(cl.clone(), (author, timestamp, summary));
+        }
+    }
+
+    // Build entries
+    let mut entries: Vec<BlameEntry> = Vec::new();
+    let mut line_number: usize = 0;
+
+    for line in output.lines() {
+        line_number += 1;
+        if let Some(cl) = line.split(':').next() {
+            let cl = cl.trim();
+            let (author, timestamp, summary) = cl_info
+                .get(cl)
+                .cloned()
+                .unwrap_or_else(|| (String::new(), 0, String::new()));
+
+            entries.push(BlameEntry {
+                line: line_number,
+                hash: cl.to_string(),
+                author,
+                timestamp,
+                summary,
+            });
+        }
+    }
+
+    log::info!("P4 blame: returning {} entries", entries.len());
+
+    Ok(BlameResult {
+        provider: "p4".to_string(),
+        entries,
+    })
+}
+
+fn svn_blame_blocking(path: String) -> Result<BlameResult, String> {
+    let file_path = PathBuf::from(&path);
+    if !file_path.is_file() {
+        return Err("Path is not a file.".to_string());
+    }
+    let parent = file_path
+        .parent()
+        .ok_or_else(|| "Invalid file path.".to_string())?;
+
+    // svn blame --xml gives structured output
+    let output = run_svn(&vec!["blame".into(), "--xml".into(), path.clone()], parent)?;
+
+    let mut entries: Vec<BlameEntry> = Vec::new();
+    let mut line_number: usize = 0;
+
+    // Simple XML parsing for svn blame output
+    for line in output.lines() {
+        if line.contains("<commit") {
+            line_number += 1;
+            let mut revision = String::new();
+            let author = String::new();
+            let timestamp: i64 = 0;
+
+            // Extract revision
+            if let Some(rev_start) = line.find("revision=\"") {
+                let rest = &line[rev_start + 10..];
+                if let Some(rev_end) = rest.find('"') {
+                    revision = rest[..rev_end].to_string();
+                }
+            }
+
+            // Look ahead for author and date in subsequent lines
+            // This is a simplified parser - real XML would need proper parsing
+            entries.push(BlameEntry {
+                line: line_number,
+                hash: revision,
+                author,
+                timestamp,
+                summary: String::new(),
+            });
+        } else if line.contains("<author>") {
+            if let Some(entry) = entries.last_mut() {
+                if let Some(start) = line.find("<author>") {
+                    let rest = &line[start + 8..];
+                    if let Some(end) = rest.find("</author>") {
+                        entry.author = rest[..end].to_string();
+                    }
+                }
+            }
+        } else if line.contains("<date>") {
+            if let Some(entry) = entries.last_mut() {
+                if let Some(start) = line.find("<date>") {
+                    let rest = &line[start + 6..];
+                    if let Some(end) = rest.find("</date>") {
+                        let date_str = &rest[..end];
+                        if let Ok(dt) = OffsetDateTime::parse(date_str, &Rfc3339) {
+                            entry.timestamp = dt.unix_timestamp();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(BlameResult {
+        provider: "svn".to_string(),
+        entries,
+    })
+}
+
+#[tauri::command]
+async fn vcs_blame(
+    path: String,
+    commit: Option<String>,
+    repo_root: Option<String>,
+    provider: Option<String>,
+) -> Result<BlameResult, String> {
+    log::info!("vcs_blame requested path={} commit={:?} provider={:?}", path, commit, provider);
+
+    // If provider is specified, only try that one
+    let try_git = provider.as_ref().map_or(true, |p| p == "git");
+    let try_p4 = provider.as_ref().map_or(true, |p| p == "p4");
+    let try_svn = provider.as_ref().map_or(true, |p| p == "svn");
+
+    // Try Git first
+    if try_git {
+        match tauri::async_runtime::spawn_blocking({
+            let p = path.clone();
+            let c = commit.clone();
+            let r = repo_root.clone();
+            move || git_blame_blocking(p, c, r)
+        })
+        .await
+        {
+            Ok(Ok(result)) => return Ok(result),
+            Ok(Err(e)) => log::warn!("Git blame failed path={} error={}", path, e),
+            Err(e) => log::warn!("Git blame task failed path={} error={}", path, e),
+        }
+    }
+
+    // Try P4 (only for working copy, not historical)
+    if try_p4 && commit.is_none() {
+        match tauri::async_runtime::spawn_blocking({
+            let p = path.clone();
+            move || p4_blame_blocking(p)
+        })
+        .await
+        {
+            Ok(Ok(result)) => return Ok(result),
+            Ok(Err(e)) => log::warn!("P4 blame failed path={} error={}", path, e),
+            Err(e) => log::warn!("P4 blame task failed path={} error={}", path, e),
+        }
+    }
+
+    // Try SVN (only for working copy, not historical)
+    if try_svn && commit.is_none() {
+        match tauri::async_runtime::spawn_blocking({
+            let p = path.clone();
+            move || svn_blame_blocking(p)
+        })
+        .await
+        {
+            Ok(Ok(result)) => return Ok(result),
+            Ok(Err(e)) => log::warn!("SVN blame failed path={} error={}", path, e),
+            Err(e) => log::warn!("SVN blame task failed path={} error={}", path, e),
+        }
+    }
+
+    Err("No VCS blame available for this file".to_string())
+}
+
 fn git_history_blocking(path: String) -> Result<GitHistoryResult, String> {
     let file_path = PathBuf::from(path);
     if !file_path.is_file() {
@@ -1357,6 +1724,7 @@ pub fn run() {
             git_show_file,
             svn_history,
             vcs_history,
+            vcs_blame,
             p4_show_file,
             svn_show_file
         ])

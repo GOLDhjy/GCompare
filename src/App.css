@@ -268,6 +268,7 @@ body {
 .diff-panel {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   margin: 0;
   background: var(--panel-strong);
   border: 1px solid var(--border);
@@ -1088,4 +1089,43 @@ body {
   color: rgba(30, 30, 30, 0.9);
 }
 
+/* Blame mode styles */
+.blame-glyph-marker {
+  background-color: var(--accent) !important;
+  border-left: 3px solid var(--accent) !important;
+}
 
+.blame-line-highlight {
+  background-color: rgba(0, 121, 107, 0.08) !important;
+}
+
+.blame-file-label {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background-color: var(--bg-secondary);
+  border-radius: 4px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-theme="dark"] .blame-glyph-marker {
+  background-color: var(--accent) !important;
+  border-left: 3px solid var(--accent) !important;
+}
+
+:root[data-theme="dark"] .blame-line-highlight {
+  background-color: rgba(77, 182, 172, 0.12) !important;
+}
+
+.toggle-switch.active {
+  color: var(--accent);
+}
+
+.toggle-switch.active .toggle-text {
+  color: var(--accent);
+  font-weight: 600;
+}
