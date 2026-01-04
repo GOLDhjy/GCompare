@@ -184,9 +184,7 @@ fn run_git(args: &[String], cwd: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-fn run_p4(args: &[String], cwd: &Path) -> Result<String, String> {
-    let mut command = Command::new("p4");
-    command.current_dir(cwd).args(args);
+fn apply_p4_env(command: &mut Command, cwd: &Path) {
     let env_config = std::env::var("P4CONFIG")
         .ok()
         .map(|value| value.trim().to_string())
@@ -208,6 +206,44 @@ fn run_p4(args: &[String], cwd: &Path) -> Result<String, String> {
     } else {
         log::info!("P4CONFIG not set and no local config found from {}", cwd.display());
     }
+}
+
+fn log_p4_info_for_path(path: &str) {
+    let file_path = PathBuf::from(path);
+    let cwd = file_path.parent().unwrap_or_else(|| Path::new("."));
+    let mut command = Command::new("p4");
+    command.current_dir(cwd).args(["info"]);
+    apply_p4_env(&mut command, cwd);
+    match command.output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let message = if !stdout.is_empty() { stdout } else { stderr };
+            if output.status.success() {
+                if !message.is_empty() {
+                    log::info!("p4 info output={}", truncate_for_log(&message, 4000));
+                } else {
+                    log::info!("p4 info returned no output");
+                }
+            } else {
+                log::warn!(
+                    "p4 info failed cwd={} status={} output={}",
+                    cwd.display(),
+                    output.status,
+                    truncate_for_log(&message, 4000)
+                );
+            }
+        }
+        Err(error) => {
+            log::warn!("p4 info failed to run: {error}");
+        }
+    }
+}
+
+fn run_p4(args: &[String], cwd: &Path) -> Result<String, String> {
+    let mut command = Command::new("p4");
+    command.current_dir(cwd).args(args);
+    apply_p4_env(&mut command, cwd);
 
     let output = command.output().map_err(|error| {
         if error.kind() == ErrorKind::NotFound {
@@ -837,6 +873,7 @@ fn is_p4_no_history(error: &str) -> bool {
         || lower.contains("file(s) not in client")
         || lower.contains("must create client")
         || lower.contains("no such client")
+        || lower.contains("client unknown")
         || (lower.contains("client") && lower.contains("unknown"))
         || (lower.contains("client") && lower.contains("not found"))
 }
@@ -888,6 +925,7 @@ fn vcs_history_blocking(path: String) -> Result<VcsHistoryResult, String> {
         Ok(result) => return Ok(result),
         Err(error) => {
             log::warn!("P4 history failed path={path} error={error}");
+            log_p4_info_for_path(&path);
             error
         }
     };

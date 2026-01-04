@@ -50,6 +50,17 @@
   !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".css"
   !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".scss"
   !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".less"
+  !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".usf"
+  !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".ush"
+  !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".hlsl"
+  !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".glsl"
+  !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".vert"
+  !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".frag"
+  !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".geom"
+  !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".comp"
+  !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".shader"
+  !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".cg"
+  !insertmacro GCOMPARE_ADD_CONTEXT_MENU ".fx"
   !insertmacro UPDATEFILEASSOC
 !macroend
 
@@ -94,5 +105,16 @@
   !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".css"
   !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".scss"
   !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".less"
+  !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".usf"
+  !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".ush"
+  !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".hlsl"
+  !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".glsl"
+  !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".vert"
+  !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".frag"
+  !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".geom"
+  !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".comp"
+  !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".shader"
+  !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".cg"
+  !insertmacro GCOMPARE_REMOVE_CONTEXT_MENU ".fx"
   !insertmacro UPDATEFILEASSOC
 !macroend
