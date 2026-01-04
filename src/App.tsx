@@ -174,9 +174,9 @@ function App() {
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [historyProvider, setHistoryProvider] = useState<HistoryProvider | null>(null);
+  const [_historyProvider, setHistoryProvider] = useState<HistoryProvider | null>(null);
   const [historyRepoRoot, setHistoryRepoRoot] = useState<string | null>(null);
-  const [historyRelativePath, setHistoryRelativePath] = useState<string | null>(null);
+  const [_historyRelativePath, setHistoryRelativePath] = useState<string | null>(null);
   const [historySourceSide, setHistorySourceSide] = useState<"original" | "modified">(
     "original",
   );
