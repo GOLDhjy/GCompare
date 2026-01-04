@@ -19,8 +19,7 @@ GCompare is a cross-platform text/file diff tool built with Tauri v2. It focuses
 - Inline / Side-by-side switch
 - Diff navigation (previous/next)
 - Theme settings (system / light / dark)
-- Git/P4/SVN history panel: commit/changelist list + single-file compare (via git/p4/svn CLI)
-
+- Git/P4/SVN history panel: commit/changelist list + single-file compare (via git/p4/svn CLI)- P4 connection settings: configure P4PORT/P4USER/P4CLIENT as fallback when no p4config file is present
 ## Download
 See Releases:  
 https://github.com/GOLDhjy/GCompare/releases
@@ -32,7 +31,18 @@ https://github.com/GOLDhjy/GCompare/releases
 - Switch view: use the Inline toggle
 - Diff navigation: use the ↑ / ↓ buttons
 - Git/P4/SVN history: hover the History tab, click a commit/changelist to compare (Git first)
+- P4 settings: click the P4 button next to History title to configure fallback P4 connection (used when no p4config file)
 - Pin history panel: click Pin
+
+## P4V Integration
+You can set GCompare as the external Diff tool in P4V:
+
+1. Open P4V → Edit → Preferences → Diff
+2. Select "Use external application for diffing"
+3. Set the path to GCompare installation, e.g.: `C:\Users\<username>\AppData\Local\GCompare\gcompare.exe`
+4. Set arguments to: `%1 %2`
+
+After setup, P4V will automatically use GCompare when comparing files.
 
 ## Shortcuts
 - Open left: Ctrl/Cmd + O

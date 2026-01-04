@@ -943,18 +943,6 @@ function App() {
                   <div className="history-panel-header">
                     <div className="history-panel-title">
                       <span className="history-title">History</span>
-                      <button
-                        type="button"
-                        className="p4-settings-toggle"
-                        onClick={() => setP4SettingsOpen(!p4SettingsOpen)}
-                        title="P4 connection settings (fallback when no p4config)"
-                      >
-                        <span className={`p4-settings-arrow${p4SettingsOpen ? " is-open" : ""}`}>▶</span>
-                        <span>P4</span>
-                        {(settings.p4?.port || settings.p4?.user || settings.p4?.client) && (
-                          <span className="p4-settings-badge">●</span>
-                        )}
-                      </button>
                     </div>
                     <div className="history-panel-actions">
                       <button
@@ -966,6 +954,20 @@ function App() {
                         {historyBusy ? "Loading..." : "Refresh"}
                       </button>
                     </div>
+                  </div>
+                  <div className="history-controls">
+                    <button
+                      type="button"
+                      className="p4-settings-toggle"
+                      onClick={() => setP4SettingsOpen(!p4SettingsOpen)}
+                      title="P4 connection settings (fallback when no p4config)"
+                    >
+                      <span className={`p4-settings-arrow${p4SettingsOpen ? " is-open" : ""}`}>▶</span>
+                      <span>P4Config</span>
+                      {(settings.p4?.port || settings.p4?.user || settings.p4?.client) && (
+                        <span className="p4-settings-badge">●</span>
+                      )}
+                    </button>
                   </div>
                   {p4SettingsOpen && (
                     <div className="p4-settings-form">
@@ -1037,7 +1039,7 @@ function App() {
                     </div>
                   )}
                   <div className="history-controls">
-                    <label className="history-control">
+                    <label className="history-control-inline">
                       <span>Source</span>
                       <select
                         value={historySourceSide}

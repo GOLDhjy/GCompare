@@ -381,8 +381,9 @@ body {
 
 .history-panel-title {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -390,6 +391,30 @@ body {
 .history-title {
   font-size: 13px;
   font-weight: 600;
+}
+
+.history-control-inline {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.history-control-inline select {
+  padding: 4px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.history-control-inline select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .history-subtitle {
