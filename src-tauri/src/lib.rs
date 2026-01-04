@@ -15,6 +15,7 @@ use tauri::{
     Emitter, Manager,
 };
 use tauri_plugin_log::{log, Builder as LogBuilder, RotationStrategy};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -234,6 +235,37 @@ fn run_p4(args: &[String], cwd: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+fn run_svn(args: &[String], cwd: &Path) -> Result<String, String> {
+    let output = Command::new("svn")
+        .current_dir(cwd)
+        .args(args)
+        .output()
+        .map_err(|error| {
+            if error.kind() == ErrorKind::NotFound {
+                "svn is not installed or not available on PATH.".to_string()
+            } else {
+                format!("Failed to run svn: {error}")
+            }
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let fallback = format!("svn exited with status {}", output.status);
+        let message = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            fallback
+        };
+        log::warn!("svn failed cwd={} args={args:?} error={message}", cwd.display());
+        return Err(message);
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 struct P4ConfigInfo {
     name: String,
     path: PathBuf,
@@ -266,6 +298,136 @@ fn truncate_for_log(value: &str, max_len: usize) -> String {
     truncated.truncate(max_len);
     truncated.push_str("...(truncated)");
     truncated
+}
+
+fn extract_xml_attr(line: &str, attr: &str) -> Option<String> {
+    let needle = format!("{attr}=\"");
+    let start = line.find(&needle)? + needle.len();
+    let rest = &line[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+fn extract_xml_value(line: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = line.find(&open)? + open.len();
+    let end = line.find(&close)?;
+    if end < start {
+        return None;
+    }
+    Some(line[start..end].to_string())
+}
+
+fn parse_svn_time(value: &str) -> i64 {
+    OffsetDateTime::parse(value, &Rfc3339)
+        .map(|dt| dt.unix_timestamp())
+        .unwrap_or(0)
+}
+
+fn parse_svn_log_entries(output: &str, path: &str) -> Vec<VcsHistoryEntry> {
+    struct PendingSvnEntry {
+        revision: String,
+        timestamp: i64,
+        author: String,
+        summary: String,
+        deleted: bool,
+    }
+
+    let mut entries = Vec::new();
+    let mut pending: Option<PendingSvnEntry> = None;
+    let mut in_msg = false;
+    let mut msg_lines: Vec<String> = Vec::new();
+
+    for raw_line in output.lines() {
+        let line = raw_line.trim();
+
+        if line.starts_with("<logentry") {
+            let revision = extract_xml_attr(line, "revision").unwrap_or_default();
+            pending = Some(PendingSvnEntry {
+                revision,
+                timestamp: 0,
+                author: String::new(),
+                summary: String::new(),
+                deleted: false,
+            });
+            in_msg = false;
+            msg_lines.clear();
+            continue;
+        }
+
+        if line.starts_with("</logentry") {
+            if in_msg {
+                if let Some(entry) = pending.as_mut() {
+                    entry.summary = msg_lines.join("\n");
+                }
+                in_msg = false;
+            }
+            if let Some(entry) = pending.take() {
+                if !entry.revision.is_empty() {
+                    entries.push(VcsHistoryEntry {
+                        provider: "svn".to_string(),
+                        hash: entry.revision,
+                        timestamp: entry.timestamp,
+                        author: entry.author,
+                        summary: entry.summary,
+                        path: path.to_string(),
+                        deleted: entry.deleted,
+                    });
+                }
+            }
+            continue;
+        }
+
+        let Some(entry) = pending.as_mut() else {
+            continue;
+        };
+
+        if in_msg {
+            if let Some(end_idx) = line.find("</msg>") {
+                msg_lines.push(line[..end_idx].to_string());
+                entry.summary = msg_lines.join("\n");
+                msg_lines.clear();
+                in_msg = false;
+            } else {
+                msg_lines.push(line.to_string());
+            }
+            continue;
+        }
+
+        if let Some(author) = extract_xml_value(line, "author") {
+            entry.author = author;
+            continue;
+        }
+
+        if let Some(date) = extract_xml_value(line, "date") {
+            entry.timestamp = parse_svn_time(&date);
+            continue;
+        }
+
+        if let Some(msg) = extract_xml_value(line, "msg") {
+            entry.summary = msg;
+            continue;
+        }
+
+        if line.contains("<msg>") {
+            let start = line.find("<msg>").map(|idx| idx + 5).unwrap_or(0);
+            let remainder = &line[start..];
+            if let Some(end_idx) = remainder.find("</msg>") {
+                entry.summary = remainder[..end_idx].to_string();
+            } else {
+                in_msg = true;
+                msg_lines.push(remainder.to_string());
+            }
+            continue;
+        }
+
+        if line.contains("<path") && line.contains("action=\"D\"") {
+            entry.deleted = true;
+        }
+    }
+
+    entries
 }
 
 fn parse_commit_line(line: &str) -> Option<(String, i64, String, String)> {
@@ -586,6 +748,74 @@ fn p4_history_blocking(path: String) -> Result<VcsHistoryResult, String> {
     })
 }
 
+fn svn_history_blocking(path: String) -> Result<VcsHistoryResult, String> {
+    let file_path = PathBuf::from(&path);
+    if !file_path.is_file() {
+        return Err("Path is not a file.".to_string());
+    }
+    let parent = file_path
+        .parent()
+        .ok_or_else(|| "Invalid file path.".to_string())?;
+
+    let wc_root = run_svn(
+        &vec![
+            "info".into(),
+            "--show-item".into(),
+            "wc-root".into(),
+            path.clone(),
+        ],
+        parent,
+    )
+    .ok()
+    .and_then(|output| {
+        output
+            .lines()
+            .next()
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty())
+            .map(PathBuf::from)
+    });
+
+    let relative_path = wc_root
+        .as_ref()
+        .and_then(|root| file_path.strip_prefix(root).ok())
+        .map(to_git_path)
+        .unwrap_or_else(|| fallback_relative_path(&path));
+
+    let log_output = run_svn(
+        &vec![
+            "log".into(),
+            "--xml".into(),
+            "--verbose".into(),
+            path.clone(),
+        ],
+        parent,
+    )?;
+
+    if log_output.trim().is_empty() {
+        log::warn!("svn log returned empty output path={path}");
+    }
+
+    let entries = parse_svn_log_entries(&log_output, &relative_path);
+    if entries.is_empty() {
+        if log_output.trim().is_empty() {
+            log::warn!("svn log returned empty output path={relative_path}");
+        } else {
+            let output_preview = truncate_for_log(&log_output, 4000);
+            log::warn!(
+                "svn history parsed 0 entries path={relative_path} output_preview={output_preview}"
+            );
+        }
+    }
+
+    Ok(VcsHistoryResult {
+        provider: "svn".to_string(),
+        repo_root: wc_root.map(|root| root.to_string_lossy().to_string()),
+        relative_path,
+        entries,
+    })
+}
+
 fn is_git_no_history(error: &str) -> bool {
     let lower = error.to_lowercase();
     error == "git is not installed or not available on PATH."
@@ -605,6 +835,23 @@ fn is_p4_no_history(error: &str) -> bool {
         || lower.contains("not on client")
         || lower.contains("no such file")
         || lower.contains("file(s) not in client")
+        || lower.contains("must create client")
+        || lower.contains("no such client")
+        || (lower.contains("client") && lower.contains("unknown"))
+        || (lower.contains("client") && lower.contains("not found"))
+}
+
+fn is_svn_no_history(error: &str) -> bool {
+    let lower = error.to_lowercase();
+    error == "svn is not installed or not available on PATH."
+        || lower.contains("not a working copy")
+        || lower.contains("not under version control")
+        || lower.contains("is not a working copy")
+        || lower.contains("e155007")
+        || lower.contains("e155010")
+        || lower.contains("no such file")
+        || lower.contains("not found")
+        || lower.contains("does not exist")
 }
 
 fn fallback_relative_path(path: &str) -> String {
@@ -626,30 +873,45 @@ fn empty_history(path: String) -> VcsHistoryResult {
 
 fn vcs_history_blocking(path: String) -> Result<VcsHistoryResult, String> {
     log::info!("vcs_history requested path={path}");
-    match git_history_blocking(path.clone()) {
-        Ok(result) => Ok(map_git_result(result)),
-        Err(git_error) => {
-            if git_error == "Path is not a file." || git_error == "Invalid file path." {
-                return Err(git_error);
+    let git_error = match git_history_blocking(path.clone()) {
+        Ok(result) => return Ok(map_git_result(result)),
+        Err(error) => {
+            if error == "Path is not a file." || error == "Invalid file path." {
+                return Err(error);
             }
-            log::warn!("Git history failed path={path} error={git_error}");
-            match p4_history_blocking(path.clone()) {
-                Ok(result) => Ok(result),
-                Err(p4_error) => {
-                    log::warn!("P4 history failed path={path} error={p4_error}");
-                    if is_git_no_history(&git_error) && is_p4_no_history(&p4_error) {
-                        log::info!(
-                            "No VCS history path={path} git_error={git_error} p4_error={p4_error}"
-                        );
-                        Ok(empty_history(path))
-                    } else {
-                        Err(format!(
-                            "Git history unavailable: {git_error}. P4 history unavailable: {p4_error}"
-                        ))
-                    }
-                }
-            }
+            log::warn!("Git history failed path={path} error={error}");
+            error
         }
+    };
+
+    let p4_error = match p4_history_blocking(path.clone()) {
+        Ok(result) => return Ok(result),
+        Err(error) => {
+            log::warn!("P4 history failed path={path} error={error}");
+            error
+        }
+    };
+
+    let svn_error = match svn_history_blocking(path.clone()) {
+        Ok(result) => return Ok(result),
+        Err(error) => {
+            log::warn!("SVN history failed path={path} error={error}");
+            error
+        }
+    };
+
+    if is_git_no_history(&git_error)
+        && is_p4_no_history(&p4_error)
+        && is_svn_no_history(&svn_error)
+    {
+        log::info!(
+            "No VCS history path={path} git_error={git_error} p4_error={p4_error} svn_error={svn_error}"
+        );
+        Ok(empty_history(path))
+    } else {
+        Err(format!(
+            "Git history unavailable: {git_error}. P4 history unavailable: {p4_error}. SVN history unavailable: {svn_error}"
+        ))
     }
 }
 
@@ -669,6 +931,25 @@ fn p4_show_file_blocking(
     run_p4(&vec!["print".into(), "-q".into(), spec], cwd)
 }
 
+fn svn_show_file_blocking(revision: String, working_path: String) -> Result<String, String> {
+    if revision.is_empty() || !revision.chars().all(|c| c.is_ascii_digit()) {
+        return Err("Invalid revision.".to_string());
+    }
+    let working_path = PathBuf::from(working_path);
+    let cwd = working_path
+        .parent()
+        .ok_or_else(|| "Invalid file path.".to_string())?;
+    run_svn(
+        &vec![
+            "cat".into(),
+            "-r".into(),
+            revision,
+            working_path.to_string_lossy().to_string(),
+        ],
+        cwd,
+    )
+}
+
 #[tauri::command]
 async fn git_history(path: String) -> Result<GitHistoryResult, String> {
     tauri::async_runtime::spawn_blocking(move || git_history_blocking(path))
@@ -686,6 +967,13 @@ async fn git_show_file(repo_root: String, commit: String, path: String) -> Resul
 }
 
 #[tauri::command]
+async fn svn_history(path: String) -> Result<VcsHistoryResult, String> {
+    tauri::async_runtime::spawn_blocking(move || svn_history_blocking(path))
+        .await
+        .map_err(|error| format!("SVN history task failed: {error}"))?
+}
+
+#[tauri::command]
 async fn vcs_history(path: String) -> Result<VcsHistoryResult, String> {
     tauri::async_runtime::spawn_blocking(move || vcs_history_blocking(path))
         .await
@@ -699,6 +987,15 @@ async fn p4_show_file(path: String, change: String, working_path: String) -> Res
     })
     .await
     .map_err(|error| format!("P4 show task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn svn_show_file(revision: String, working_path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        svn_show_file_blocking(revision, working_path)
+    })
+    .await
+    .map_err(|error| format!("SVN show task failed: {error}"))?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -927,8 +1224,10 @@ pub fn run() {
             consume_open_paths,
             git_history,
             git_show_file,
+            svn_history,
             vcs_history,
-            p4_show_file
+            p4_show_file,
+            svn_show_file
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");

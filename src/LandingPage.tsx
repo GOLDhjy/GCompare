@@ -27,7 +27,7 @@ export default function LandingPage() {
           </h1>
           <p className="hero-subtitle">
             GCompare is a <span className="highlight">fast</span>, <span className="highlight">clean</span>, and <span className="highlight">cross-platform</span> diff tool built with Tauri and React.
-            Compare <span className="highlight">text</span>, <span className="highlight">files</span>, and <span className="highlight">Git/P4 history</span> with ease.
+            Compare <span className="highlight">text</span>, <span className="highlight">files</span>, and <span className="highlight">Git/P4/SVN history</span> with ease.
           </p>
           <div className="cta-group">
             <a href={downloadUrl} className="btn btn-primary">

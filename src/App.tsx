@@ -38,12 +38,17 @@ const initialModifiedText = [
   "- Fast navigation",
   "- Clean layout",
   "- Cross-platform",
-  "- Git/P4 CLI support",
+  "- Git/P4/SVN CLI support",
 ].join("\n");
 const gitVirtualPathPrefix = "git:";
 const p4VirtualPathPrefix = "p4:";
-const vcsVirtualPathPrefixes = [gitVirtualPathPrefix, p4VirtualPathPrefix];
-type VcsProvider = "git" | "p4";
+const svnVirtualPathPrefix = "svn:";
+const vcsVirtualPathPrefixes = [
+  gitVirtualPathPrefix,
+  p4VirtualPathPrefix,
+  svnVirtualPathPrefix,
+];
+type VcsProvider = "git" | "p4" | "svn";
 type HistoryProvider = VcsProvider | "none";
 type HistoryEntry = {
   provider: VcsProvider;
@@ -66,9 +71,17 @@ const isVirtualPath = (path: string | null) =>
 const getHistoryId = (entry: HistoryEntry) =>
   entry.provider === "git" ? entry.hash.slice(0, 7) : entry.hash;
 const getHistoryPrefix = (provider: VcsProvider) =>
-  provider === "git" ? gitVirtualPathPrefix : p4VirtualPathPrefix;
+  provider === "git"
+    ? gitVirtualPathPrefix
+    : provider === "p4"
+      ? p4VirtualPathPrefix
+      : svnVirtualPathPrefix;
 const formatCommitTime = (timestamp: number) =>
   new Date(timestamp * 1000).toLocaleString();
+const shouldShowHistoryStatus = (message: string) => {
+  const lower = message.toLowerCase();
+  return !lower.includes("history unavailable");
+};
 type LineChange = {
   originalStartLineNumber: number;
   originalEndLineNumber: number;
@@ -538,7 +551,9 @@ function App() {
       setHistoryRepoRoot(null);
       setHistoryRelativePath(null);
       setHistoryError(message);
-      showStatus(`History error: ${message}`, 8000);
+      if (shouldShowHistoryStatus(message)) {
+        showStatus(`History error: ${message}`, 8000);
+      }
       lastHistoryPathRef.current = historyTargetPath;
     } finally {
       setHistoryBusy(false);
@@ -570,11 +585,16 @@ function App() {
                 commit: entry.hash,
                 path: entry.path,
               })
-            : await invoke<string>("p4_show_file", {
-                path: entry.path,
-                change: entry.hash,
-                workingPath: historyTargetPath,
-              });
+            : entry.provider === "p4"
+              ? await invoke<string>("p4_show_file", {
+                  path: entry.path,
+                  change: entry.hash,
+                  workingPath: historyTargetPath,
+                })
+              : await invoke<string>("svn_show_file", {
+                  revision: entry.hash,
+                  workingPath: historyTargetPath,
+                });
         const displayId = getHistoryId(entry);
         const commitLabel = `${getHistoryPrefix(entry.provider)}${displayId}:${entry.path}`;
         const workingText =
@@ -910,6 +930,8 @@ function App() {
                             ? "Git history"
                             : historyProvider === "p4"
                               ? "P4 history"
+                              : historyProvider === "svn"
+                                ? "SVN history"
                               : "History"}
                       </span>
                     </div>
@@ -948,15 +970,17 @@ function App() {
                   <div className="history-list">
                     {historyBusy ? (
                       <div className="history-empty">Loading history...</div>
-                    ) : historyError ? (
-                      <div className="history-empty">{historyError}</div>
                     ) : historyEntries.length === 0 ? (
                       <div className="history-empty">No history entries yet.</div>
                     ) : (
                       historyEntries.map((entry) => {
                         const displayId = getHistoryId(entry);
                         const idLabel =
-                          entry.provider === "git" ? displayId : `CL ${displayId}`;
+                          entry.provider === "git"
+                            ? displayId
+                            : entry.provider === "p4"
+                              ? `CL ${displayId}`
+                              : `r${displayId}`;
                         const isActive = historySelectedHash === entry.hash;
                         const isLoading = historyLoadingHash === entry.hash;
                         return (
