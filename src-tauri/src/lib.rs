@@ -175,7 +175,9 @@ fn run_git(args: &[String], cwd: &Path) -> Result<String, String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let fallback = format!("git exited with status {}", output.status);
-        return Err(if stderr.is_empty() { fallback } else { stderr });
+        let message = if stderr.is_empty() { fallback } else { stderr };
+        log::warn!("git failed cwd={} args={args:?} error={message}", cwd.display());
+        return Err(message);
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -184,8 +186,26 @@ fn run_git(args: &[String], cwd: &Path) -> Result<String, String> {
 fn run_p4(args: &[String], cwd: &Path) -> Result<String, String> {
     let mut command = Command::new("p4");
     command.current_dir(cwd).args(args);
-    if let Some(config_name) = find_p4config_name(cwd) {
-        command.env("P4CONFIG", config_name);
+    let env_config = std::env::var("P4CONFIG")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let config_info = if env_config.is_some() {
+        None
+    } else {
+        find_p4config_info(cwd)
+    };
+    if let Some(info) = &config_info {
+        command.env("P4CONFIG", &info.name);
+        log::info!(
+            "P4CONFIG resolved name={} path={}",
+            info.name,
+            info.path.display()
+        );
+    } else if let Some(config) = &env_config {
+        log::info!("P4CONFIG already set to {config}");
+    } else {
+        log::info!("P4CONFIG not set and no local config found from {}", cwd.display());
     }
 
     let output = command.output().map_err(|error| {
@@ -200,36 +220,52 @@ fn run_p4(args: &[String], cwd: &Path) -> Result<String, String> {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let fallback = format!("p4 exited with status {}", output.status);
-        return Err(if !stderr.is_empty() {
+        let message = if !stderr.is_empty() {
             stderr
         } else if !stdout.is_empty() {
             stdout
         } else {
             fallback
-        });
+        };
+        log::warn!("p4 failed cwd={} args={args:?} error={message}", cwd.display());
+        return Err(message);
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-fn find_p4config_name(cwd: &Path) -> Option<String> {
-    if let Ok(config) = std::env::var("P4CONFIG") {
-        if !config.trim().is_empty() {
-            return None;
-        }
-    }
+struct P4ConfigInfo {
+    name: String,
+    path: PathBuf,
+}
 
+fn find_p4config_info(cwd: &Path) -> Option<P4ConfigInfo> {
     let candidates = ["p4config.txt", ".p4config", "p4config"];
     let mut current = Some(cwd);
     while let Some(dir) = current {
         for name in candidates {
-            if dir.join(name).is_file() {
-                return Some(name.to_string());
+            let path = dir.join(name);
+            if path.is_file() {
+                return Some(P4ConfigInfo {
+                    name: name.to_string(),
+                    path,
+                });
             }
         }
         current = dir.parent();
     }
     None
+}
+
+fn truncate_for_log(value: &str, max_len: usize) -> String {
+    let normalized = value.replace('\r', "").replace('\n', "\\n");
+    if normalized.len() <= max_len {
+        return normalized;
+    }
+    let mut truncated = normalized;
+    truncated.truncate(max_len);
+    truncated.push_str("...(truncated)");
+    truncated
 }
 
 fn parse_commit_line(line: &str) -> Option<(String, i64, String, String)> {
@@ -475,9 +511,12 @@ fn p4_history_blocking(path: String) -> Result<VcsHistoryResult, String> {
 
         let mut parts = rest.splitn(2, ' ');
         let key = parts.next().unwrap_or("");
+        let base_key = key
+            .trim_end_matches(|c: char| c.is_ascii_digit() || c == ',')
+            .trim();
         let value = parts.next().unwrap_or("").trim();
 
-        match key {
+        match base_key {
             "depotFile" => {
                 if !value.is_empty() {
                     current_depot_path = Some(value.to_string());
@@ -528,6 +567,16 @@ fn p4_history_blocking(path: String) -> Result<VcsHistoryResult, String> {
     flush_pending(&mut pending);
 
     let relative_path = current_depot_path.unwrap_or(path);
+    if entries.is_empty() {
+        if log_output.trim().is_empty() {
+            log::warn!("p4 filelog returned empty output path={relative_path}");
+        } else {
+            let output_preview = truncate_for_log(&log_output, 4000);
+            log::warn!(
+                "p4 history parsed 0 entries path={relative_path} output_preview={output_preview}"
+            );
+        }
+    }
 
     Ok(VcsHistoryResult {
         provider: "p4".to_string(),
@@ -576,16 +625,22 @@ fn empty_history(path: String) -> VcsHistoryResult {
 }
 
 fn vcs_history_blocking(path: String) -> Result<VcsHistoryResult, String> {
+    log::info!("vcs_history requested path={path}");
     match git_history_blocking(path.clone()) {
         Ok(result) => Ok(map_git_result(result)),
         Err(git_error) => {
             if git_error == "Path is not a file." || git_error == "Invalid file path." {
                 return Err(git_error);
             }
+            log::warn!("Git history failed path={path} error={git_error}");
             match p4_history_blocking(path.clone()) {
                 Ok(result) => Ok(result),
                 Err(p4_error) => {
+                    log::warn!("P4 history failed path={path} error={p4_error}");
                     if is_git_no_history(&git_error) && is_p4_no_history(&p4_error) {
+                        log::info!(
+                            "No VCS history path={path} git_error={git_error} p4_error={p4_error}"
+                        );
                         Ok(empty_history(path))
                     } else {
                         Err(format!(
