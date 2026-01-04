@@ -505,6 +505,14 @@ function App() {
     if (
       !force
       && lastHistoryPathRef.current === historyTargetPath
+      && historyError
+    ) {
+      return;
+    }
+
+    if (
+      !force
+      && lastHistoryPathRef.current === historyTargetPath
       && historyEntries.length > 0
       && !historyError
     ) {
@@ -530,11 +538,12 @@ function App() {
       setHistoryRepoRoot(null);
       setHistoryRelativePath(null);
       setHistoryError(message);
-      lastHistoryPathRef.current = null;
+      showStatus(`History error: ${message}`, 8000);
+      lastHistoryPathRef.current = historyTargetPath;
     } finally {
       setHistoryBusy(false);
     }
-  }, [formatInvokeError, historyEntries.length, historyError, historyTargetPath]);
+  }, [formatInvokeError, historyEntries.length, historyError, historyTargetPath, showStatus]);
 
   const handleCompareCommit = useCallback(
     async (entry: HistoryEntry) => {
@@ -591,7 +600,8 @@ function App() {
         );
       } catch (error) {
         console.error(error);
-        showStatus("Failed to load history content.", 2500);
+        const message = formatInvokeError(error);
+        showStatus(`Failed to load history content: ${message}`, 8000);
       } finally {
         setHistoryLoadingHash(null);
       }
@@ -607,6 +617,7 @@ function App() {
       originalPath,
       originalText,
       setSideContent,
+      formatInvokeError,
       showStatus,
     ],
   );

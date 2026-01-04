@@ -182,17 +182,19 @@ fn run_git(args: &[String], cwd: &Path) -> Result<String, String> {
 }
 
 fn run_p4(args: &[String], cwd: &Path) -> Result<String, String> {
-    let output = Command::new("p4")
-        .current_dir(cwd)
-        .args(args)
-        .output()
-        .map_err(|error| {
-            if error.kind() == ErrorKind::NotFound {
-                "p4 is not installed or not available on PATH.".to_string()
-            } else {
-                format!("Failed to run p4: {error}")
-            }
-        })?;
+    let mut command = Command::new("p4");
+    command.current_dir(cwd).args(args);
+    if let Some(config_name) = find_p4config_name(cwd) {
+        command.env("P4CONFIG", config_name);
+    }
+
+    let output = command.output().map_err(|error| {
+        if error.kind() == ErrorKind::NotFound {
+            "p4 is not installed or not available on PATH.".to_string()
+        } else {
+            format!("Failed to run p4: {error}")
+        }
+    })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -208,6 +210,26 @@ fn run_p4(args: &[String], cwd: &Path) -> Result<String, String> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn find_p4config_name(cwd: &Path) -> Option<String> {
+    if let Ok(config) = std::env::var("P4CONFIG") {
+        if !config.trim().is_empty() {
+            return None;
+        }
+    }
+
+    let candidates = ["p4config.txt", ".p4config", "p4config"];
+    let mut current = Some(cwd);
+    while let Some(dir) = current {
+        for name in candidates {
+            if dir.join(name).is_file() {
+                return Some(name.to_string());
+            }
+        }
+        current = dir.parent();
+    }
+    None
 }
 
 fn parse_commit_line(line: &str) -> Option<(String, i64, String, String)> {
@@ -226,8 +248,7 @@ fn to_git_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-#[tauri::command]
-fn git_history(path: String) -> Result<GitHistoryResult, String> {
+fn git_history_blocking(path: String) -> Result<GitHistoryResult, String> {
     let file_path = PathBuf::from(path);
     if !file_path.is_file() {
         return Err("Path is not a file.".to_string());
@@ -365,8 +386,7 @@ fn git_history(path: String) -> Result<GitHistoryResult, String> {
     })
 }
 
-#[tauri::command]
-fn git_show_file(repo_root: String, commit: String, path: String) -> Result<String, String> {
+fn git_show_file_blocking(repo_root: String, commit: String, path: String) -> Result<String, String> {
     let repo_root = PathBuf::from(repo_root);
     if !repo_root.is_dir() {
         return Err("Repository root does not exist.".to_string());
@@ -400,7 +420,7 @@ fn map_git_result(result: GitHistoryResult) -> VcsHistoryResult {
     }
 }
 
-fn p4_history(path: String) -> Result<VcsHistoryResult, String> {
+fn p4_history_blocking(path: String) -> Result<VcsHistoryResult, String> {
     let file_path = PathBuf::from(&path);
     if !file_path.is_file() {
         return Err("Path is not a file.".to_string());
@@ -555,15 +575,14 @@ fn empty_history(path: String) -> VcsHistoryResult {
     }
 }
 
-#[tauri::command]
-fn vcs_history(path: String) -> Result<VcsHistoryResult, String> {
-    match git_history(path.clone()) {
+fn vcs_history_blocking(path: String) -> Result<VcsHistoryResult, String> {
+    match git_history_blocking(path.clone()) {
         Ok(result) => Ok(map_git_result(result)),
         Err(git_error) => {
             if git_error == "Path is not a file." || git_error == "Invalid file path." {
                 return Err(git_error);
             }
-            match p4_history(path.clone()) {
+            match p4_history_blocking(path.clone()) {
                 Ok(result) => Ok(result),
                 Err(p4_error) => {
                     if is_git_no_history(&git_error) && is_p4_no_history(&p4_error) {
@@ -579,8 +598,11 @@ fn vcs_history(path: String) -> Result<VcsHistoryResult, String> {
     }
 }
 
-#[tauri::command]
-fn p4_show_file(path: String, change: String, working_path: String) -> Result<String, String> {
+fn p4_show_file_blocking(
+    path: String,
+    change: String,
+    working_path: String,
+) -> Result<String, String> {
     if change.is_empty() || !change.chars().all(|c| c.is_ascii_digit()) {
         return Err("Invalid changelist.".to_string());
     }
@@ -590,6 +612,38 @@ fn p4_show_file(path: String, change: String, working_path: String) -> Result<St
         .parent()
         .ok_or_else(|| "Invalid file path.".to_string())?;
     run_p4(&vec!["print".into(), "-q".into(), spec], cwd)
+}
+
+#[tauri::command]
+async fn git_history(path: String) -> Result<GitHistoryResult, String> {
+    tauri::async_runtime::spawn_blocking(move || git_history_blocking(path))
+        .await
+        .map_err(|error| format!("Git history task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn git_show_file(repo_root: String, commit: String, path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        git_show_file_blocking(repo_root, commit, path)
+    })
+    .await
+    .map_err(|error| format!("Git show task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn vcs_history(path: String) -> Result<VcsHistoryResult, String> {
+    tauri::async_runtime::spawn_blocking(move || vcs_history_blocking(path))
+        .await
+        .map_err(|error| format!("History task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn p4_show_file(path: String, change: String, working_path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        p4_show_file_blocking(path, change, working_path)
+    })
+    .await
+    .map_err(|error| format!("P4 show task failed: {error}"))?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
