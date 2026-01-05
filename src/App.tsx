@@ -1412,7 +1412,7 @@ function App() {
                   readOnly: false,
                   originalEditable: true,
                   minimap: { enabled: false },
-                  renderOverviewRuler: false,
+                  renderOverviewRuler: true,
                   lineNumbers: "on",
                   fontFamily: editorFontFamily,
                   fontSize: editorFontSize,
