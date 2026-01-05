@@ -1095,8 +1095,8 @@ body {
   border-left: 3px solid var(--accent) !important;
 }
 
-.blame-line-highlight {
-  background-color: rgba(0, 121, 107, 0.08) !important;
+.blame-commit-highlight {
+  background-color: rgba(255, 214, 10, 0.35) !important;
 }
 
 .blame-file-label {
@@ -1117,8 +1117,8 @@ body {
   border-left: 3px solid var(--accent) !important;
 }
 
-:root[data-theme="dark"] .blame-line-highlight {
-  background-color: rgba(77, 182, 172, 0.12) !important;
+:root[data-theme="dark"] .blame-commit-highlight {
+  background-color: rgba(255, 214, 10, 0.22) !important;
 }
 
 .toggle-switch.active {

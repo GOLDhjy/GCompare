@@ -654,9 +654,11 @@ function App() {
     const decorations: import("monaco-editor").editor.IModelDeltaDecoration[] = [];
     
     let lastAuthor = "";
+    const selectedHash = historySelectedHash;
     for (const entry of blameData.entries) {
       const isNewAuthor = entry.author !== lastAuthor;
       lastAuthor = entry.author;
+      const isSelectedCommit = Boolean(selectedHash && entry.hash === selectedHash);
 
       const shortHash = entry.hash.length > 7 ? entry.hash.slice(0, 7) : entry.hash;
       const hoverContent = [
@@ -672,14 +674,14 @@ function App() {
           isWholeLine: true,
           glyphMarginClassName: isNewAuthor ? "blame-glyph-marker" : undefined,
           glyphMarginHoverMessage: { value: hoverContent, isTrusted: true },
-          className: isNewAuthor ? "blame-line-highlight" : undefined,
+          className: isSelectedCommit ? "blame-commit-highlight" : undefined,
         },
       });
     }
 
     blameDecorationsRef.current = editor.deltaDecorations([], decorations);
     console.log("Decorations applied, count:", blameDecorationsRef.current.length);
-  }, [blameData]);
+  }, [blameData, historySelectedHash]);
 
   // Stable line numbers function that reads from ref
   const blameLineNumbers = useCallback((lineNumber: number): string => {
