@@ -113,9 +113,8 @@ npm run tauri dev
 - Git/P4/SVN 集成：单文件历史对比（基于 git/p4/svn CLI，优先 Git）
 
 ### 计划中 🚧
-- 快捷键
+- 快捷键完善
 - 字体大小设置
-- 左右滑动控制
 
 ## 许可证
 MIT License
