@@ -52,6 +52,7 @@ struct VcsHistoryEntry {
     summary: String,
     path: String,
     deleted: bool,
+    revision: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -503,6 +504,7 @@ fn parse_svn_log_entries(output: &str, path: &str) -> Vec<VcsHistoryEntry> {
                         summary: entry.summary,
                         path: path.to_string(),
                         deleted: entry.deleted,
+                        revision: None,
                     });
                 }
             }
@@ -735,9 +737,9 @@ fn p4_blame_blocking(
 
     log::info!("P4 blame: running p4 annotate for {}", spec);
 
-    // p4 annotate -c shows changelist numbers
+    // p4 annotate -c shows changelist numbers; -q removes file headers for stable line mapping
     let output = run_p4(
-        &vec!["annotate".into(), "-c".into(), spec],
+        &vec!["annotate".into(), "-q".into(), "-c".into(), spec],
         parent,
     )?;
 
@@ -747,11 +749,12 @@ fn p4_blame_blocking(
     let mut changelists: std::collections::HashSet<String> = std::collections::HashSet::new();
     for line in output.lines() {
         // Format: "changelist: content"
-        if let Some(cl) = line.split(':').next() {
-            let cl = cl.trim();
-            if !cl.is_empty() && cl.chars().all(|c| c.is_ascii_digit()) {
-                changelists.insert(cl.to_string());
-            }
+        let Some((cl_raw, _)) = line.split_once(':') else {
+            continue;
+        };
+        let cl = cl_raw.trim();
+        if !cl.is_empty() && cl.chars().all(|c| c.is_ascii_digit()) {
+            changelists.insert(cl.to_string());
         }
     }
 
@@ -802,22 +805,26 @@ fn p4_blame_blocking(
     let mut line_number: usize = 0;
 
     for line in output.lines() {
-        line_number += 1;
-        if let Some(cl) = line.split(':').next() {
-            let cl = cl.trim();
-            let (author, timestamp, summary) = cl_info
-                .get(cl)
-                .cloned()
-                .unwrap_or_else(|| (String::new(), 0, String::new()));
-
-            entries.push(BlameEntry {
-                line: line_number,
-                hash: cl.to_string(),
-                author,
-                timestamp,
-                summary,
-            });
+        let Some((cl_raw, _)) = line.split_once(':') else {
+            continue;
+        };
+        let cl = cl_raw.trim();
+        if cl.is_empty() || !cl.chars().all(|c| c.is_ascii_digit()) {
+            continue;
         }
+        line_number += 1;
+        let (author, timestamp, summary) = cl_info
+            .get(cl)
+            .cloned()
+            .unwrap_or_else(|| (String::new(), 0, String::new()));
+
+        entries.push(BlameEntry {
+            line: line_number,
+            hash: cl.to_string(),
+            author,
+            timestamp,
+            summary,
+        });
     }
 
     log::info!("P4 blame: returning {} entries", entries.len());
@@ -860,11 +867,18 @@ fn svn_blame_blocking(
 
     let mut entries: Vec<BlameEntry> = Vec::new();
     let mut line_number: usize = 0;
+    let mut pending_line: Option<usize> = None;
 
     // Simple XML parsing for svn blame output
     for line in output.lines() {
+        if line.contains("<entry") {
+            pending_line = extract_xml_attr(line, "line-number")
+                .and_then(|value| value.parse::<usize>().ok());
+        }
         if line.contains("<commit") {
-            line_number += 1;
+            let next_line = pending_line.unwrap_or_else(|| line_number + 1);
+            line_number = next_line;
+            pending_line = None;
             let mut revision = String::new();
             let author = String::new();
             let timestamp: i64 = 0;
@@ -1142,6 +1156,7 @@ fn map_git_entry(entry: GitHistoryEntry) -> VcsHistoryEntry {
         summary: entry.summary,
         path: entry.path,
         deleted: entry.deleted,
+        revision: None,
     }
 }
 
@@ -1181,10 +1196,12 @@ fn p4_history_blocking(path: String) -> Result<VcsHistoryResult, String> {
         summary: String,
         path: String,
         deleted: bool,
+        revision: Option<String>,
     }
 
     let mut entries = Vec::new();
     let mut current_depot_path: Option<String> = None;
+    let mut current_rev: Option<String> = None;
     let mut pending: Option<PendingP4Entry> = None;
 
     let mut flush_pending = |pending: &mut Option<PendingP4Entry>| {
@@ -1197,6 +1214,7 @@ fn p4_history_blocking(path: String) -> Result<VcsHistoryResult, String> {
                 summary: entry.summary,
                 path: entry.path,
                 deleted: entry.deleted,
+                revision: entry.revision,
             });
         }
     };
@@ -1232,7 +1250,15 @@ fn p4_history_blocking(path: String) -> Result<VcsHistoryResult, String> {
                     summary: String::new(),
                     path: entry_path,
                     deleted: false,
+                    revision: current_rev.take(),
                 });
+            }
+            "rev" => {
+                if let Some(entry) = pending.as_mut() {
+                    entry.revision = Some(value.to_string());
+                } else {
+                    current_rev = Some(value.to_string());
+                }
             }
             "time" => {
                 if let Some(entry) = pending.as_mut() {

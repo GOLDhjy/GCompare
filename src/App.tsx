@@ -61,6 +61,7 @@ type HistoryEntry = {
   summary: string;
   path: string;
   deleted: boolean;
+  revision?: string;
 };
 type HistoryResult = {
   provider: HistoryProvider;
@@ -978,11 +979,19 @@ function App() {
               provider: "git",
             });
           } else {
-            await fetchBlame(entry.provider === "p4" ? entry.path : workingPath, {
-              commit: entry.hash,
-              provider: entry.provider,
-              workingPath,
-            });
+            if (entry.provider === "p4") {
+              await fetchBlame(entry.path, {
+                commit: entry.hash,
+                provider: "p4",
+                workingPath,
+              });
+            } else {
+              await fetchBlame(workingPath, {
+                commit: entry.hash,
+                provider: entry.provider,
+                workingPath,
+              });
+            }
           }
         } else {
           showStatus(
