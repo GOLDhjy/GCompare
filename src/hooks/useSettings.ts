@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { AppSettings, P4Settings } from '../types/settings';
+import type { AppSettings, P4Settings, SVNSettings } from '../types/settings';
 import { getSettings, updateSettings as updateSettingsStore } from '../services/settingsStore';
 
 export function useSettings() {
@@ -30,6 +30,17 @@ export function useSettings() {
             });
           } catch (error) {
             console.error('Failed to sync P4 settings:', error);
+          }
+        }
+
+        // 同步 SVN 设置到后端
+        if (loadedSettings.svn) {
+          try {
+            await invoke('update_svn_settings', {
+              path: loadedSettings.svn.path || '',
+            });
+          } catch (error) {
+            console.error('Failed to sync SVN settings:', error);
           }
         }
       })
@@ -76,5 +87,19 @@ export function useSettings() {
     }
   };
 
-  return { settings, loading, updateTheme, updateViewMode, updateP4Settings };
+  const updateSVNSettings = async (svn: SVNSettings) => {
+    try {
+      await updateSettingsStore({ svn });
+      setSettings((prev) => ({ ...prev, svn }));
+      // 同步到后端
+      await invoke('update_svn_settings', {
+        path: svn.path || '',
+      });
+    } catch (error) {
+      console.error('Failed to update SVN settings:', error);
+      throw error;
+    }
+  };
+
+  return { settings, loading, updateTheme, updateViewMode, updateP4Settings, updateSVNSettings };
 }

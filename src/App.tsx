@@ -7,6 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { BaseDirectory } from "@tauri-apps/api/path";
+import { open } from "@tauri-apps/plugin-dialog";
 import { check, type DownloadEvent } from "@tauri-apps/plugin-updater";
 import { useFileHandlers } from "./hooks/useFileHandlers";
 import { useMonacoRemeasure } from "./hooks/useMonacoRemeasure";
@@ -139,7 +140,7 @@ const getPathParts = (path: string): PathParts => {
 };
 
 function App() {
-  const { settings, updateTheme, updateViewMode, updateP4Settings } = useSettings();
+  const { settings, updateTheme, updateViewMode, updateP4Settings, updateSVNSettings } = useSettings();
   const systemTheme = useSystemTheme();
   const [updateBusy, setUpdateBusy] = useState(false);
   const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
@@ -196,6 +197,8 @@ function App() {
   const [p4PortInput, setP4PortInput] = useState("");
   const [p4UserInput, setP4UserInput] = useState("");
   const [p4ClientInput, setP4ClientInput] = useState("");
+  const [svnSettingsOpen, setSvnSettingsOpen] = useState(false);
+  const [svnPathInput, setSvnPathInput] = useState("");
 
   // Blame 模式状态
   const [blameMode, setBlameMode] = useState(false);
@@ -226,6 +229,33 @@ function App() {
       setP4ClientInput(settings.p4.client || "");
     }
   }, [settings.p4]);
+
+  // 同步 SVN 设置输入框的值
+  useEffect(() => {
+    if (settings.svn) {
+      setSvnPathInput(settings.svn.path || "");
+    }
+  }, [settings.svn]);
+
+  const handleSelectSvnPath = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [
+          {
+            name: 'Executable',
+            extensions: ['exe', '']  // Windows .exe 和 Unix 无扩展名
+          }
+        ]
+      });
+
+      if (selected && typeof selected === 'string') {
+        setSvnPathInput(selected);
+      }
+    } catch (error) {
+      console.error('Failed to open file dialog:', error);
+    }
+  };
 
   const originalIsFile = Boolean(originalPath && !isVirtualPath(originalPath));
   const modifiedIsFile = Boolean(modifiedPath && !isVirtualPath(modifiedPath));
@@ -1428,6 +1458,85 @@ function App() {
                       </div>
                     </div>
                   )}
+                  {/* SVNConfig - 完全复用 P4 样式 */}
+                  <div className="history-controls">
+                    <button
+                      type="button"
+                      className="p4-settings-toggle"
+                      onClick={() => setSvnSettingsOpen(!svnSettingsOpen)}
+                      title="SVN executable path (fallback when svn not found in PATH)"
+                    >
+                      <span className={`p4-settings-arrow${svnSettingsOpen ? " is-open" : ""}`}>▶</span>
+                      <span>SVNConfig</span>
+                      {settings.svn?.path && <span className="p4-settings-badge">●</span>}
+                    </button>
+                  </div>
+                  {svnSettingsOpen && (
+                    <div className="p4-settings-form">
+                      <p className="p4-settings-hint">
+                        Fallback SVN executable path when not found in PATH.
+                      </p>
+                      <label className="p4-setting-field">
+                        <span>SVN Path</span>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <input
+                            type="text"
+                            placeholder="e.g. C:\Program Files\TortoiseSVN\bin\svn.exe"
+                            value={svnPathInput}
+                            onChange={(e) => setSvnPathInput(e.target.value)}
+                            style={{ flex: 1 }}
+                          />
+                          <button
+                            type="button"
+                            onClick={handleSelectSvnPath}
+                            style={{
+                              padding: '5px 10px',
+                              fontSize: '11px',
+                              fontWeight: '500',
+                              border: '1px solid var(--border)',
+                              borderRadius: '4px',
+                              background: 'var(--hover)',
+                              color: 'var(--ink)',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
+                            }}
+                            title="Browse..."
+                          >
+                            Browse…
+                          </button>
+                        </div>
+                      </label>
+                      <div className="p4-settings-actions">
+                        <button
+                          type="button"
+                          className="p4-settings-save"
+                          onClick={() => {
+                            void updateSVNSettings({
+                              path: svnPathInput,
+                            }).then(() => {
+                              showStatus("SVN settings saved");
+                            });
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="p4-settings-clear"
+                          onClick={() => {
+                            setSvnPathInput("");
+                            void updateSVNSettings({
+                              path: "",
+                            }).then(() => {
+                              showStatus("SVN settings cleared");
+                            });
+                          }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="history-controls">
                     <label className="history-control-inline">
                       <span>Source</span>
@@ -1500,8 +1609,8 @@ function App() {
                 <div
                   className="blame-editor-shell"
                   style={{
-                    ["--blame-gutter-width" as const]: `${blameGutterWidth}px`,
-                  }}
+                    "--blame-gutter-width": `${blameGutterWidth}px`,
+                  } as React.CSSProperties}
                 >
                   <div
                     className={`blame-gutter-resizer${blameResizing ? " is-dragging" : ""}`}

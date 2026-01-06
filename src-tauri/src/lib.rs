@@ -116,6 +116,43 @@ fn update_p4_settings(port: String, user: String, client: String) {
     set_global_p4_settings(settings);
 }
 
+#[derive(Default, Clone, serde::Deserialize)]
+struct SVNSettings {
+    path: String,
+}
+
+static GLOBAL_SVN_SETTINGS: std::sync::OnceLock<Mutex<SVNSettings>> = std::sync::OnceLock::new();
+
+fn get_global_svn_settings() -> SVNSettings {
+    GLOBAL_SVN_SETTINGS
+        .get_or_init(|| Mutex::new(SVNSettings::default()))
+        .lock()
+        .map(|guard| guard.clone())
+        .unwrap_or_default()
+}
+
+fn set_global_svn_settings(settings: SVNSettings) {
+    if let Some(mutex) = GLOBAL_SVN_SETTINGS.get() {
+        if let Ok(mut guard) = mutex.lock() {
+            *guard = settings;
+        }
+    } else {
+        let _ = GLOBAL_SVN_SETTINGS.set(Mutex::new(settings));
+    }
+}
+
+#[tauri::command]
+fn update_svn_settings(path: String) {
+    let settings = SVNSettings {
+        path: path.trim().to_string(),
+    };
+    log::info!(
+        "SVN settings updated: path={}",
+        if settings.path.is_empty() { "(empty)" } else { &settings.path }
+    );
+    set_global_svn_settings(settings);
+}
+
 #[tauri::command]
 fn update_theme_menu(app: tauri::AppHandle, theme: String) {
     let menu = app
@@ -367,17 +404,36 @@ fn run_p4(args: &[String], cwd: &Path) -> Result<String, String> {
 }
 
 fn run_svn(args: &[String], cwd: &Path) -> Result<String, String> {
-    let output = Command::new("svn")
-        .current_dir(cwd)
-        .args(args)
-        .output()
-        .map_err(|error| {
-            if error.kind() == ErrorKind::NotFound {
-                "svn is not installed or not available on PATH.".to_string()
-            } else {
-                format!("Failed to run svn: {error}")
-            }
-        })?;
+    // 尝试从 UI 设置获取 SVN 路径
+    let svn_exe = get_global_svn_settings().path;
+
+    let output = if !svn_exe.is_empty() {
+        // 使用配置的 SVN 路径
+        Command::new(&svn_exe)
+            .current_dir(cwd)
+            .args(args)
+            .output()
+            .map_err(|error| {
+                if error.kind() == ErrorKind::NotFound {
+                    format!("SVN executable not found at configured path: {}. Please check the path in SVNConfig settings.", svn_exe)
+                } else {
+                    format!("Failed to run svn at {}: {}", svn_exe, error)
+                }
+            })?
+    } else {
+        // 使用默认的 'svn' 命令
+        Command::new("svn")
+            .current_dir(cwd)
+            .args(args)
+            .output()
+            .map_err(|error| {
+                if error.kind() == ErrorKind::NotFound {
+                    "svn is not installed or not available on PATH. You can configure a custom path in SVNConfig settings.".to_string()
+                } else {
+                    format!("Failed to run svn: {error}")
+                }
+            })?
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -1783,6 +1839,7 @@ pub fn run() {
             greet,
             update_theme_menu,
             update_p4_settings,
+            update_svn_settings,
             restart_app,
             consume_open_paths,
             git_history,
