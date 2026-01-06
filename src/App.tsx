@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { DiffEditor, Editor, loader, type MonacoDiffEditor } from "@monaco-editor/react";
 import type { editor as MonacoEditorType } from "monaco-editor";
 import { listen } from "@tauri-apps/api/event";
@@ -203,6 +204,18 @@ function App() {
   const [blameFilePath, setBlameFilePath] = useState<string | null>(null);
   const blameDecorationsRef = useRef<string[]>([]);
   const blameMapRef = useRef<Map<number, { author: string; hash: string; timestamp: number; summary: string }>>(new Map());
+  const [blameLineDigits, setBlameLineDigits] = useState(3);
+  const [blameLabelChars, setBlameLabelChars] = useState(15);
+  const [blameGutterWidth, setBlameGutterWidth] = useState(140);
+  const [blameResizing, setBlameResizing] = useState(false);
+  const blameCharWidthRef = useRef(7);
+  const blameLayoutListenerRef = useRef<{ dispose: () => void } | null>(null);
+  const blameResizeRef = useRef({
+    active: false,
+    startX: 0,
+    startChars: 0,
+    pointerId: 0,
+  });
 
   // 同步 P4 设置输入框的值
   useEffect(() => {
@@ -267,13 +280,53 @@ function App() {
   }, [addRecentFile, modifiedPath]);
 
   useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const sample = document.createElement("span");
+    sample.style.position = "absolute";
+    sample.style.visibility = "hidden";
+    sample.style.fontFamily = editorFontFamily;
+    sample.style.fontSize = `${editorFontSize}px`;
+    sample.textContent = "0000000000";
+    document.body.appendChild(sample);
+    const width = sample.getBoundingClientRect().width / 10;
+    document.body.removeChild(sample);
+    if (width > 0) {
+      blameCharWidthRef.current = width;
+    }
+  }, []);
+
+  useEffect(() => {
     return () => {
       diffEditorRef.current = null;
       focusedSideRef.current = null;
       diffListenersRef.current.forEach((listener) => listener.dispose());
       diffListenersRef.current = [];
+      blameLayoutListenerRef.current?.dispose();
     };
   }, []);
+
+  useEffect(() => {
+    const editor = blameEditorRef.current;
+    if (editor && blameMode) {
+      editor.updateOptions({ lineNumbersMinChars: blameLabelChars });
+    }
+  }, [blameLabelChars, blameMode]);
+
+  useEffect(() => {
+    if (!blameContent) {
+      return;
+    }
+    const lineCount = blameContent.split("\n").length;
+    const digits = Math.max(2, String(lineCount).length);
+    setBlameLineDigits(digits);
+  }, [blameContent]);
+
+  useEffect(() => {
+    const minChars = Math.max(12, blameLineDigits + 4);
+    setBlameLabelChars((current) => Math.max(current, minChars));
+  }, [blameLineDigits]);
 
   const syncDiffChanges = useCallback(() => {
     const editor = diffEditorRef.current;
@@ -589,7 +642,7 @@ function App() {
   // Fetch blame data for the current file
   const fetchBlame = useCallback(async (
     filePath: string,
-    options?: { commit?: string; repoRoot?: string; provider?: string }
+    options?: { commit?: string; repoRoot?: string; provider?: string; workingPath?: string }
   ) => {
     setBlameBusy(true);
     try {
@@ -598,6 +651,7 @@ function App() {
         commit: options?.commit,
         repoRoot: options?.repoRoot,
         provider: options?.provider,
+        workingPath: options?.workingPath,
       });
       console.log("Blame result:", result);
       setBlameData(result);
@@ -687,16 +741,17 @@ function App() {
   const blameLineNumbers = useCallback((lineNumber: number): string => {
     const blameMap = blameMapRef.current;
     const entry = blameMap.get(lineNumber);
+    const authorChars = Math.max(0, blameLabelChars - blameLineDigits - 1);
+    const lineLabel = lineNumber.toString().padStart(blameLineDigits, " ");
     if (entry) {
       const prevEntry = blameMap.get(lineNumber - 1);
       const isNewAuthor = !prevEntry || prevEntry.author !== entry.author;
-      if (isNewAuthor) {
-        const author = entry.author.length > 8 ? entry.author.slice(0, 8) : entry.author;
-        return `${author.padEnd(8)} ${lineNumber}`;
-      }
+      const author = isNewAuthor ? entry.author : "";
+      const trimmedAuthor = author.slice(0, authorChars);
+      return `${trimmedAuthor.padEnd(authorChars, " ")} ${lineLabel}`;
     }
-    return `${"".padEnd(8)} ${lineNumber}`;
-  }, []);
+    return `${"".padEnd(authorChars, " ")} ${lineLabel}`;
+  }, [blameLabelChars, blameLineDigits]);
 
   // Handle blame editor mount
   const handleBlameEditorMount = useCallback((editor: MonacoEditorType.IStandaloneCodeEditor) => {
@@ -709,11 +764,65 @@ function App() {
       model.setValue(blameContent);
     }
     
+    const layout = editor.getLayoutInfo();
+    setBlameGutterWidth(layout.contentLeft);
+    blameLayoutListenerRef.current?.dispose();
+    blameLayoutListenerRef.current = editor.onDidLayoutChange((info) => {
+      setBlameGutterWidth(info.contentLeft);
+    });
+
     // Apply decorations after a short delay to ensure model is ready
     if (blameData) {
       setTimeout(() => applyBlameDecorations(), 100);
     }
   }, [blameContent, blameData, applyBlameDecorations]);
+
+  const handleBlameResizerPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      blameResizeRef.current = {
+        active: true,
+        startX: event.clientX,
+        startChars: blameLabelChars,
+        pointerId: event.pointerId,
+      };
+      setBlameResizing(true);
+    },
+    [blameLabelChars],
+  );
+
+  const handleBlameResizerPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const drag = blameResizeRef.current;
+      if (!drag.active) {
+        return;
+      }
+      const delta = event.clientX - drag.startX;
+      const deltaChars = Math.round(delta / blameCharWidthRef.current);
+      const minChars = Math.max(12, blameLineDigits + 4);
+      const maxChars = 120;
+      const nextChars = Math.min(maxChars, Math.max(minChars, drag.startChars + deltaChars));
+      setBlameLabelChars(nextChars);
+    },
+    [blameLineDigits],
+  );
+
+  const handleBlameResizerPointerEnd = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const drag = blameResizeRef.current;
+      if (!drag.active) {
+        return;
+      }
+      drag.active = false;
+      setBlameResizing(false);
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // Ignore capture release failures.
+      }
+    },
+    [],
+  );
 
   // Update blame editor content when blameContent changes (e.g., switching history)
   useEffect(() => {
@@ -857,10 +966,10 @@ function App() {
           setSideContent("original", content, commitLabel);
         }
 
-        // In blame mode, update the blame content and fetch blame for that commit
+        // In blame mode, update blame for the selected historical commit
         if (blameMode) {
           setBlameContent(content);
-          // Fetch blame for the historical version
+          setBlameFilePath(workingPath);
           if (entry.provider === "git") {
             // For git, we can get blame for specific commits
             await fetchBlame(entry.path, {
@@ -869,9 +978,11 @@ function App() {
               provider: "git",
             });
           } else {
-            // For P4/SVN, clear blame data as we can't get historical blame easily
-            setBlameData(null);
-            blameMapRef.current = new Map();
+            await fetchBlame(entry.provider === "p4" ? entry.path : workingPath, {
+              commit: entry.hash,
+              provider: entry.provider,
+              workingPath,
+            });
           }
         } else {
           showStatus(
@@ -1377,27 +1488,45 @@ function App() {
           <section className="diff-panel" aria-label={blameMode ? "Blame view" : "Diff editor"}>
             {blameMode ? (
               blameFilePath && (
-                <Editor
-                  key={`blame-${blameFilePath}`}
-                  defaultValue=""
-                  language="markdown"
-                  theme={getMonacoTheme(effectiveTheme)}
-                  onMount={handleBlameEditorMount}
-                  keepCurrentModel={true}
-                  options={{
-                    readOnly: true,
-                    minimap: { enabled: false },
-                    overviewRulerLanes: 0,
-                    lineNumbers: blameLineNumbers,
-                    lineNumbersMinChars: 15,
-                    glyphMargin: true,
-                    fontFamily: editorFontFamily,
-                    fontSize: editorFontSize,
-                    wordWrap: "off",
-                    scrollBeyondLastLine: false,
-                    fixedOverflowWidgets: true,
+                <div
+                  className="blame-editor-shell"
+                  style={{
+                    ["--blame-gutter-width" as const]: `${blameGutterWidth}px`,
                   }}
-                />
+                >
+                  <div
+                    className={`blame-gutter-resizer${blameResizing ? " is-dragging" : ""}`}
+                    role="separator"
+                    aria-label="Resize blame column"
+                    aria-orientation="vertical"
+                    onPointerDown={handleBlameResizerPointerDown}
+                    onPointerMove={handleBlameResizerPointerMove}
+                    onPointerUp={handleBlameResizerPointerEnd}
+                    onPointerLeave={handleBlameResizerPointerEnd}
+                    onPointerCancel={handleBlameResizerPointerEnd}
+                  />
+                  <Editor
+                    key={`blame-${blameFilePath}`}
+                    defaultValue=""
+                    language="markdown"
+                    theme={getMonacoTheme(effectiveTheme)}
+                    onMount={handleBlameEditorMount}
+                    keepCurrentModel={true}
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      overviewRulerLanes: 0,
+                      lineNumbers: blameLineNumbers,
+                      lineNumbersMinChars: blameLabelChars,
+                      glyphMargin: true,
+                      fontFamily: editorFontFamily,
+                      fontSize: editorFontSize,
+                      wordWrap: "off",
+                      scrollBeyondLastLine: false,
+                      fixedOverflowWidgets: true,
+                    }}
+                  />
+                </div>
               )
             ) : (
               <DiffEditor

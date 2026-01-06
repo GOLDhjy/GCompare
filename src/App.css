@@ -283,6 +283,39 @@ body {
   border-radius: 8px;
 }
 
+.blame-editor-shell {
+  position: relative;
+  height: 100%;
+}
+
+.blame-gutter-resizer {
+  position: absolute;
+  top: 0;
+  left: calc(var(--blame-gutter-width, 140px) - 4px);
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.blame-gutter-resizer::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 3px;
+  width: 2px;
+  height: calc(100% - 12px);
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.blame-editor-shell:hover .blame-gutter-resizer,
+.blame-gutter-resizer.is-dragging {
+  opacity: 1;
+}
+
 .history-shell {
   display: flex;
   height: 100%;
@@ -1119,6 +1152,10 @@ body {
 
 :root[data-theme="dark"] .blame-commit-highlight {
   background-color: rgba(255, 214, 10, 0.22) !important;
+}
+
+:root[data-theme="dark"] .blame-gutter-resizer::after {
+  background: rgba(255, 255, 255, 0.35);
 }
 
 .toggle-switch.active {

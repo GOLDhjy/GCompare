@@ -708,8 +708,19 @@ fn git_blame_blocking(path: String, commit: Option<String>, repo_root_override: 
     })
 }
 
-fn p4_blame_blocking(path: String) -> Result<BlameResult, String> {
-    let file_path = PathBuf::from(&path);
+fn p4_blame_blocking(
+    path: String,
+    change: Option<String>,
+    working_path: Option<String>,
+) -> Result<BlameResult, String> {
+    if let Some(change) = change.as_ref() {
+        if change.is_empty() || !change.chars().all(|c| c.is_ascii_digit()) {
+            return Err("Invalid changelist.".to_string());
+        }
+    }
+
+    let cwd_path = working_path.unwrap_or_else(|| path.clone());
+    let file_path = PathBuf::from(&cwd_path);
     if !file_path.is_file() {
         return Err("Path is not a file.".to_string());
     }
@@ -717,11 +728,16 @@ fn p4_blame_blocking(path: String) -> Result<BlameResult, String> {
         .parent()
         .ok_or_else(|| "Invalid file path.".to_string())?;
 
-    log::info!("P4 blame: running p4 annotate for {}", path);
+    let spec = change
+        .as_ref()
+        .map(|cl| format!("{path}@={cl}"))
+        .unwrap_or_else(|| path.clone());
+
+    log::info!("P4 blame: running p4 annotate for {}", spec);
 
     // p4 annotate -c shows changelist numbers
     let output = run_p4(
-        &vec!["annotate".into(), "-c".into(), path.clone()],
+        &vec!["annotate".into(), "-c".into(), spec],
         parent,
     )?;
 
@@ -812,8 +828,19 @@ fn p4_blame_blocking(path: String) -> Result<BlameResult, String> {
     })
 }
 
-fn svn_blame_blocking(path: String) -> Result<BlameResult, String> {
-    let file_path = PathBuf::from(&path);
+fn svn_blame_blocking(
+    path: String,
+    revision: Option<String>,
+    working_path: Option<String>,
+) -> Result<BlameResult, String> {
+    if let Some(revision) = revision.as_ref() {
+        if revision.is_empty() || !revision.chars().all(|c| c.is_ascii_digit()) {
+            return Err("Invalid revision.".to_string());
+        }
+    }
+
+    let cwd_path = working_path.unwrap_or_else(|| path.clone());
+    let file_path = PathBuf::from(&cwd_path);
     if !file_path.is_file() {
         return Err("Path is not a file.".to_string());
     }
@@ -821,8 +848,15 @@ fn svn_blame_blocking(path: String) -> Result<BlameResult, String> {
         .parent()
         .ok_or_else(|| "Invalid file path.".to_string())?;
 
+    let mut args = vec!["blame".into(), "--xml".into()];
+    if let Some(revision) = revision {
+        args.push("-r".into());
+        args.push(revision);
+    }
+    args.push(path.clone());
+
     // svn blame --xml gives structured output
-    let output = run_svn(&vec!["blame".into(), "--xml".into(), path.clone()], parent)?;
+    let output = run_svn(&args, parent)?;
 
     let mut entries: Vec<BlameEntry> = Vec::new();
     let mut line_number: usize = 0;
@@ -888,6 +922,7 @@ async fn vcs_blame(
     commit: Option<String>,
     repo_root: Option<String>,
     provider: Option<String>,
+    working_path: Option<String>,
 ) -> Result<BlameResult, String> {
     log::info!("vcs_blame requested path={} commit={:?} provider={:?}", path, commit, provider);
 
@@ -913,10 +948,12 @@ async fn vcs_blame(
     }
 
     // Try P4 (only for working copy, not historical)
-    if try_p4 && commit.is_none() {
+    if try_p4 {
         match tauri::async_runtime::spawn_blocking({
             let p = path.clone();
-            move || p4_blame_blocking(p)
+            let c = commit.clone();
+            let w = working_path.clone();
+            move || p4_blame_blocking(p, c, w)
         })
         .await
         {
@@ -927,10 +964,12 @@ async fn vcs_blame(
     }
 
     // Try SVN (only for working copy, not historical)
-    if try_svn && commit.is_none() {
+    if try_svn {
         match tauri::async_runtime::spawn_blocking({
             let p = path.clone();
-            move || svn_blame_blocking(p)
+            let c = commit.clone();
+            let w = working_path.clone();
+            move || svn_blame_blocking(p, c, w)
         })
         .await
         {
