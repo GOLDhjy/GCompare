@@ -54,9 +54,9 @@ jobs:
           $tags = git tag --list 'v*' --sort=-v:refname
           $prevTag = ($tags | Where-Object { $_ -ne $tag } | Select-Object -First 1)
           $range = if ($prevTag) { "$prevTag..$tag" } else { $tag }
-          $log = git log --pretty=format:"- %s (%h)" $range
-          if (-not $log) {
-            $log = "- No changes listed."
+          $logLines = git log --pretty=format:"- %s (%h)" $range
+          if (-not $logLines) {
+            $logLines = @("- No changes listed.")
           }
           $bodyLines = @(
             '## 下载说明',
@@ -69,6 +69,7 @@ jobs:
             '## Changelog',
             $log
           )
+          $bodyLines += $logLines
           $body = $bodyLines -join "`n"
           $body | Out-File -FilePath release-notes.md -Encoding utf8
           "body<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
