@@ -26,9 +26,15 @@ GCompare is a cross-platform text/file diff tool built on Tauri v2. The goal is 
 - Check for updates can auto-update to new versions, under Help
 
 <p align="center">
+  <img src="./public/Images/v0.4.png" alt="GCompare v0.4.0" />
+</p>
+<p align="center"><sub>v0.4.0</sub></p>
+
+<p align="center">
   <img src="./public/Images/v0.3.0.png" alt="GCompare v0.3.0" />
 </p>
 <p align="center"><sub>v0.3.0</sub></p>
+
 <p align="center">
   <img src="./public/Images/v0.2.0.png" alt="GCompare v0.2.0" />
 </p>

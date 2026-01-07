@@ -27,9 +27,15 @@ GCompare 是一个基于 Tauri v2 的跨平台文本/文件差异对比工具，
 - 检查更新可以自动更新为新版，位于 help 里面
 
 <p align="center">
+  <img src="./public/Images/v0.4.png" alt="GCompare v0.4.0" />
+</p>
+<p align="center"><sub>v0.4.0</sub></p>
+
+<p align="center">
   <img src="./public/Images/v0.3.0.png" alt="GCompare v0.3.0" />
 </p>
 <p align="center"><sub>v0.3.0</sub></p>
+
 <p align="center">
   <img src="./public/Images/v0.2.0.png" alt="GCompare v0.2.0" />
 </p>
