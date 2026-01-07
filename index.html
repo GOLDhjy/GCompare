@@ -1,57 +1,86 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" sizes="256x256" href="%BASE_URL%icon256.png" />
-    <link rel="apple-touch-icon" href="%BASE_URL%icon256.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GCompare - File Comparison Tool</title>
-    <meta name="description" content="GCompare is a fast, clean, and cross-platform file comparison tool built with Tauri and React. Compare text, files, and Git/P4 history with ease." />
-    <meta name="keywords" content="gcompare, diff tool, file comparison, git diff, p4, perforce, tauri, react, open source, macos, windows, linux, developer tools" />
-    <meta name="author" content="GOLDhjy" />
+    <head>
+        <meta charset="UTF-8" />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="256x256"
+            href="%BASE_URL%icon256.png"
+        />
+        <link rel="apple-touch-icon" href="%BASE_URL%icon256.png" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>GCompare - File Comparison Tool</title>
+        <meta
+            name="description"
+            content="GCompare is a fast, clean, and cross-platform file comparison tool built with Tauri and React. Compare text, files, and Git/P4 history with ease."
+        />
+        <meta
+            name="keywords"
+            content="GCompare, diff tool, file comparison, git diff, p4, perforce, tauri, react, open source, macos, windows, linux, developer tools"
+        />
+        <meta name="author" content="GOLDhjy" />
 
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://goldhjy.github.io/GCompare/" />
-    <meta property="og:title" content="GCompare - File Comparison Tool" />
-    <meta property="og:description" content="GCompare is a fast, clean, and cross-platform file comparison tool built with Tauri and React. Compare text, files, and Git/P4 history with ease." />
-    <meta property="og:image" content="https://goldhjy.github.io/GCompare/Images/v0.2.0.png" />
+        <!-- Open Graph / Facebook -->
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://goldhjy.github.io/GCompare/" />
+        <meta property="og:title" content="GCompare - File Comparison Tool" />
+        <meta
+            property="og:description"
+            content="GCompare is a fast, clean, and cross-platform file comparison tool built with Tauri and React. Compare text, files, and Git/P4 history with ease."
+        />
+        <meta
+            property="og:image"
+            content="https://goldhjy.github.io/GCompare/Images/v0.2.0.png"
+        />
 
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content="https://goldhjy.github.io/GCompare/" />
-    <meta property="twitter:title" content="GCompare - File Comparison Tool" />
-    <meta property="twitter:description" content="GCompare is a fast, clean, and cross-platform file comparison tool built with Tauri and React. Compare text, files, and Git/P4 history with ease." />
-    <meta property="twitter:image" content="https://goldhjy.github.io/GCompare/Images/v0.2.0.png" />
+        <!-- Twitter -->
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta
+            property="twitter:url"
+            content="https://goldhjy.github.io/GCompare/"
+        />
+        <meta
+            property="twitter:title"
+            content="GCompare - File Comparison Tool"
+        />
+        <meta
+            property="twitter:description"
+            content="GCompare is a fast, clean, and cross-platform file comparison tool built with Tauri and React. Compare text, files, and Git/P4 history with ease."
+        />
+        <meta
+            property="twitter:image"
+            content="https://goldhjy.github.io/GCompare/Images/v0.2.0.png"
+        />
 
-    <link rel="canonical" href="https://goldhjy.github.io/GCompare/" />
-    
-    <!-- Structured Data (JSON-LD) for Google -->
-    <script type="application/ld+json">
-    {
-      "@context": "http://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "GCompare",
-      "operatingSystem": "Windows, macOS, Linux",
-      "applicationCategory": "DeveloperApplication",
-      "offers": {
-        "@type": "Offer",
-        "price": "0.00",
-        "priceCurrency": "USD"
-      },
-      "description": "GCompare is a fast, clean, and cross-platform diff tool built with Tauri and React. Compare text, files, and Git/P4 history with ease.",
-      "image": "https://goldhjy.github.io/GCompare/Images/v0.2.0.png",
-      "downloadUrl": "https://github.com/GOLDhjy/GCompare/releases",
-      "author": {
-        "@type": "Person",
-        "name": "GOLDhjy"
-      }
-    }
-    </script>
-  </head>
+        <link rel="canonical" href="https://goldhjy.github.io/GCompare/" />
 
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+        <!-- Structured Data (JSON-LD) for Google -->
+        <script type="application/ld+json">
+            {
+                "@context": "http://schema.org",
+                "@type": "SoftwareApplication",
+                "name": "GCompare",
+                "operatingSystem": "Windows, macOS, Linux",
+                "applicationCategory": "DeveloperApplication",
+                "offers": {
+                    "@type": "Offer",
+                    "price": "0.00",
+                    "priceCurrency": "USD"
+                },
+                "description": "GCompare is a fast, clean, and cross-platform diff tool built with Tauri and React. Compare text, files, and Git/P4 history with ease.",
+                "image": "https://goldhjy.github.io/GCompare/Images/v0.2.0.png",
+                "downloadUrl": "https://github.com/GOLDhjy/GCompare/releases",
+                "author": {
+                    "@type": "Person",
+                    "name": "GOLDhjy"
+                }
+            }
+        </script>
+    </head>
+
+    <body>
+        <div id="root"></div>
+        <script type="module" src="/src/main.tsx"></script>
+    </body>
 </html>
