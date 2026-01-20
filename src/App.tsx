@@ -5,7 +5,8 @@ import type { editor as MonacoEditorType } from "monaco-editor";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { mkdir, readTextFile, stat, watch, writeTextFile } from "@tauri-apps/plugin-fs";
+import type { WatchEvent } from "@tauri-apps/plugin-fs";
 import { BaseDirectory } from "@tauri-apps/api/path";
 import { open } from "@tauri-apps/plugin-dialog";
 import { check, type DownloadEvent } from "@tauri-apps/plugin-updater";
@@ -152,6 +153,31 @@ function App() {
     total: undefined,
     done: 0,
   });
+  // --- 外部文件变更检测（watch + 轮询）---
+  const lastDiskContentRef = useRef(new Map<string, string>());
+  const lastDiskMtimeRef = useRef(new Map<string, number | null>());
+  const reloadInFlightRef = useRef(new Set<string>());
+  const watchFallbackNotifiedRef = useRef(false);
+  const updateDiskMtime = useCallback(async (path: string) => {
+    try {
+      const info = await stat(path);
+      lastDiskMtimeRef.current.set(
+        path,
+        info.mtime ? info.mtime.getTime() : null,
+      );
+    } catch (error) {
+      console.warn(`Failed to stat file: ${path}`, error);
+      lastDiskMtimeRef.current.delete(path);
+    }
+  }, []);
+  const registerDiskLoad = useCallback(
+    (path: string, contents: string) => {
+      lastDiskContentRef.current.set(path, contents);
+      void updateDiskMtime(path);
+    },
+    [updateDiskMtime],
+  );
+  // --- 外部文件变更检测结束 ---
   const { statusMessage, showStatus } = useStatusMessage();
   const {
     originalText,
@@ -168,6 +194,7 @@ function App() {
     initialModifiedText,
     largeFileThreshold,
     showStatus,
+    onDiskLoad: registerDiskLoad,
   });
   const {
     recentFiles,
@@ -272,6 +299,196 @@ function App() {
   const hasRecents = recentFiles.length > 0 || recentProjects.length > 0;
 
   useMonacoRemeasure(diffEditorRef);
+
+  // --- 外部文件变更检测（watch + 轮询）---
+  const getSideValue = useCallback(
+    (side: EditorSide) => {
+      const editor = diffEditorRef.current;
+      if (editor) {
+        return side === "original"
+          ? editor.getOriginalEditor().getValue()
+          : editor.getModifiedEditor().getValue();
+      }
+      return side === "original" ? originalText : modifiedText;
+    },
+    [modifiedText, originalText],
+  );
+
+  const getOpenSidesForPath = useCallback(
+    (path: string) => {
+      const sides: EditorSide[] = [];
+      if (originalIsFile && originalPath === path) {
+        sides.push("original");
+      }
+      if (modifiedIsFile && modifiedPath === path) {
+        sides.push("modified");
+      }
+      return sides;
+    },
+    [modifiedIsFile, modifiedPath, originalIsFile, originalPath],
+  );
+
+  const isWatchChangeEvent = useCallback((event: WatchEvent) => {
+    if (event.type === "any") {
+      return true;
+    }
+    if (typeof event.type === "string") {
+      return event.type === "other";
+    }
+    return "modify" in event.type || "create" in event.type || "remove" in event.type;
+  }, []);
+
+  const reloadExternalFile = useCallback(
+    async (path: string) => {
+      const sides = getOpenSidesForPath(path);
+      if (sides.length === 0) {
+        return;
+      }
+      if (reloadInFlightRef.current.has(path)) {
+        return;
+      }
+
+      reloadInFlightRef.current.add(path);
+      try {
+        const contents = (await readTextFile(path)).replace(/\r\n?/g, "\n");
+        const currentValues = sides.map((side) => ({
+          side,
+          value: getSideValue(side),
+        }));
+
+        if (currentValues.every((entry) => entry.value === contents)) {
+          lastDiskContentRef.current.set(path, contents);
+          void updateDiskMtime(path);
+          return;
+        }
+
+        const lastDisk = lastDiskContentRef.current.get(path);
+        const hasLocalEdits =
+          typeof lastDisk === "string"
+            ? currentValues.some((entry) => entry.value !== lastDisk)
+            : false;
+        const applyReload = () => {
+          currentValues.forEach((entry) => {
+            setSideContent(entry.side, contents, path);
+          });
+          lastDiskContentRef.current.set(path, contents);
+          void updateDiskMtime(path);
+        };
+
+        if (!hasLocalEdits) {
+          applyReload();
+          const label =
+            currentValues.length === 1
+              ? currentValues[0].side === "original"
+                ? "Left"
+                : "Right"
+              : "Both";
+          showStatus(`${label} file reloaded from disk.`, 2600);
+          return;
+        }
+
+        const shouldReload = window.confirm(
+          "File was modified outside GCompare. Reload and discard local changes?",
+        );
+        if (shouldReload) {
+          applyReload();
+          showStatus("Reloaded from disk.", 2600);
+        } else {
+          void updateDiskMtime(path);
+          showStatus("External change detected. Keeping current content.", 2600);
+        }
+      } catch (error) {
+        console.warn(`Failed to reload changed file: ${path}`, error);
+        showStatus("File changed on disk, but reload failed.", 4000);
+      } finally {
+        reloadInFlightRef.current.delete(path);
+      }
+    },
+    [getOpenSidesForPath, getSideValue, setSideContent, showStatus, updateDiskMtime],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const paths = new Set<string>();
+    if (originalIsFile && originalPath) {
+      paths.add(originalPath);
+    }
+    if (modifiedIsFile && modifiedPath) {
+      paths.add(modifiedPath);
+    }
+    if (paths.size === 0) {
+      return;
+    }
+
+    let disposed = false;
+    const unwatchers: Array<() => void> = [];
+    const pollTimer = window.setInterval(() => {
+      paths.forEach((path) => {
+        if (reloadInFlightRef.current.has(path)) {
+          return;
+        }
+        void stat(path)
+          .then((info) => {
+            const currentMtime = info.mtime ? info.mtime.getTime() : null;
+            const lastMtime = lastDiskMtimeRef.current.get(path);
+            if (lastMtime === undefined) {
+              lastDiskMtimeRef.current.set(path, currentMtime);
+              return;
+            }
+            if (currentMtime === null || lastMtime === null) {
+              return;
+            }
+            if (currentMtime !== lastMtime) {
+              void reloadExternalFile(path);
+            }
+          })
+          .catch((error) => {
+            console.warn(`Failed to poll file: ${path}`, error);
+          });
+      });
+    }, 1500);
+
+    paths.forEach((path) => {
+      void updateDiskMtime(path);
+      void watch(path, (event) => {
+        if (isWatchChangeEvent(event)) {
+          void reloadExternalFile(path);
+        }
+      }, { delayMs: 350 })
+        .then((unwatch) => {
+          if (disposed) {
+            unwatch();
+          } else {
+            unwatchers.push(unwatch);
+          }
+        })
+        .catch((error) => {
+          console.warn(`Failed to watch file: ${path}`, error);
+          if (!watchFallbackNotifiedRef.current) {
+            watchFallbackNotifiedRef.current = true;
+            showStatus("Watch unavailable, using polling fallback.", 4000);
+          }
+        });
+    });
+
+    return () => {
+      disposed = true;
+      unwatchers.forEach((unwatch) => unwatch());
+      window.clearInterval(pollTimer);
+    };
+  }, [
+    reloadExternalFile,
+    modifiedIsFile,
+    modifiedPath,
+    isWatchChangeEvent,
+    originalIsFile,
+    originalPath,
+    showStatus,
+    updateDiskMtime,
+  ]);
+  // --- 外部文件变更检测结束 ---
 
   // 计算实际主题
   const effectiveTheme = settings.theme === 'system'
@@ -498,6 +715,8 @@ function App() {
 
     try {
       await writeTextFile(path, contents);
+      lastDiskContentRef.current.set(path, contents);
+      void updateDiskMtime(path);
       showStatus(
         `Saved ${focusedSide === "original" ? "left" : "right"} file.`,
         2000,

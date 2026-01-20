@@ -9,6 +9,7 @@ type UseFileHandlersOptions = {
   initialModifiedText: string;
   largeFileThreshold: number;
   showStatus: (message: string, timeout?: number) => void;
+  onDiskLoad?: (path: string, contents: string) => void;
 };
 
 export const useFileHandlers = ({
@@ -16,6 +17,7 @@ export const useFileHandlers = ({
   initialModifiedText,
   largeFileThreshold,
   showStatus,
+  onDiskLoad,
 }: UseFileHandlersOptions) => {
   const [originalText, setOriginalText] = useState(initialOriginalText);
   const [modifiedText, setModifiedText] = useState(initialModifiedText);
@@ -35,7 +37,7 @@ export const useFileHandlers = ({
       }
       openQueueRef.current = [];
     };
-  }, []);
+  }, [onDiskLoad]);
 
   const formatBytes = useCallback((bytes: number) => {
     if (bytes >= 1024 * 1024) {
@@ -66,6 +68,7 @@ export const useFileHandlers = ({
       const bytes = await readFile(path);
       const decoder = new TextDecoder("utf-8", { fatal: false });
       const contents = decoder.decode(bytes).replace(/\r\n?/g, "\n");
+      onDiskLoad?.(path, contents);
       if (side === "original") {
         setOriginalPath(path);
         setOriginalText(contents);
